@@ -33,6 +33,33 @@ async function accountBelongsToUser(accountId, userId) {
   return !!(await accounts.findOne({ _id: accountId, userId }, { projection: { _id: 1 } }));
 }
 
+// Fallback for RFC 6266 §4.3's `filename` parameter: browsers that ignore
+// `filename*` treat this as a literal quoted-string, never percent-decoding
+// it, so percent-encoding here (as encodeURIComponent would) is the wrong
+// tool -- it would save "my report.pdf" to disk as "my%20report.pdf". Strip
+// non-ASCII and anything that would break out of the quotes instead.
+function safeAsciiFilename(filename) {
+  return filename.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
+}
+
+// encodeURIComponent leaves `!'()*` unescaped, but RFC 5987's attr-char
+// (used by the `filename*` parameter) excludes them -- encode those few by
+// hand so the value is unambiguous to a strict parser.
+function encodeRFC5987ValueChars(str) {
+  return encodeURIComponent(str)
+    .replace(/['()]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase())
+    .replace(/\*/g, "%2A");
+}
+
+// Emits both parameters so every browser gets a correct filename: legacy
+// UA's fall back to the sanitised ASCII `filename`, modern ones prefer the
+// UTF-8, percent-encoded `filename*`. Both branches only ever emit
+// printable-ASCII or percent-escaped bytes, so control characters (CR/LF)
+// can't break out of the header.
+function contentDisposition(filename) {
+  return `inline; filename="${safeAsciiFilename(filename)}"; filename*=UTF-8''${encodeRFC5987ValueChars(filename)}`;
+}
+
 async function handleUpload(req, res, uploadErr) {
   if (uploadErr) {
     const msg = uploadErr.code === "LIMIT_FILE_SIZE"
@@ -91,9 +118,31 @@ router.get("/:id", asyncHandler(async (req, res) => {
   if (!doc || !(await accountBelongsToUser(doc.accountId, req.userId))) {
     return res.status(404).json({ error: "Not found." });
   }
+  // A real MongoDB read hands attachment bytes back wrapped in a BSON
+  // Binary, whose `.buffer` is a Buffer already sized to exactly the stored
+  // content (confirmed against a real BSON encode/decode round trip). But if
+  // `data` is ever a plain Buffer instead -- a driver option such as
+  // promoteBuffers, or a future caching layer -- that same `.buffer` access
+  // returns the *entire* underlying, possibly pooled ArrayBuffer, which can
+  // be up to 8KB and contain bytes left over from unrelated requests.
+  // Buffer.isBuffer() lets a plain Buffer be sent as-is, sidestepping that
+  // ArrayBuffer entirely instead of reaching for `.buffer` unconditionally.
+  const bytes = Buffer.isBuffer(doc.data) ? doc.data : Buffer.from(doc.data.buffer);
   res.setHeader("Content-Type", doc.mimeType || "application/octet-stream");
-  res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(doc.filename)}"`);
-  res.send(doc.data.buffer ? Buffer.from(doc.data.buffer) : doc.data);
+  // mimeType is client-supplied and this is served inline, so tell browsers
+  // not to sniff/execute the body as something else (e.g. HTML) no matter
+  // what mimeType claims.
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Content-Disposition", contentDisposition(doc.filename));
+  // Attachment bytes never change after upload (there is no update route)
+  // and access is already gated by requireAuth + the ownership check above,
+  // so a private, long-lived cache is safe. Without this, every thumbnail
+  // and every remounted <Attachment> re-fetches full bytes through
+  // /api/attachments, which now competes with everything else for the
+  // shared apiLimiter budget that the old public /uploads mount never
+  // touched.
+  res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
+  res.send(bytes);
 }));
 
 router.delete("/:id", asyncHandler(async (req, res) => {

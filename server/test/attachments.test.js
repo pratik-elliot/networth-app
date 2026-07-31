@@ -185,3 +185,97 @@ test("GET returns 404 for an attachment id that does not exist", async (t) => {
     assert.strictEqual(res.status, 404);
   });
 });
+
+test("GET sends only the stored bytes, not the whole pooled buffer, when data is a plain Buffer", async (t) => {
+  process.env.JWT_SECRET = "test-secret";
+  t.after(() => { delete process.env.JWT_SECRET; t.mock.reset(); });
+
+  // Simulates a driver option (e.g. promoteBuffers: true) or a future
+  // caching layer that hands back attachment bytes as a plain Buffer
+  // instead of a BSON Binary -- the case the normal fakeAttachments.findOne
+  // deliberately never produces. A short Buffer.from(string) is allocated
+  // out of Node's shared 8KB buffer pool, so its own `.buffer` (the
+  // underlying ArrayBuffer) is far larger than the 2 bytes actually stored --
+  // exactly the shape that exposed adjacent heap before the
+  // Buffer.isBuffer() guard was added.
+  const plain = Buffer.from("hi");
+  assert.ok(plain.buffer.byteLength > plain.length, "test buffer must be pool-allocated to be a meaningful regression check");
+  t.mock.method(fakeAttachments, "findOne", async () => ({
+    accountId: "acc1",
+    filename: "plain.txt",
+    mimeType: "text/plain",
+    data: plain,
+  }));
+
+  await withServer(async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api/attachments/whatever-id`, { headers: authHeader("user1") });
+    assert.strictEqual(res.status, 200);
+    const body = Buffer.from(await res.arrayBuffer());
+    assert.strictEqual(body.length, 2, `expected exactly 2 bytes, got ${body.length} (leaking the pooled buffer would return 8192)`);
+    assert.strictEqual(body.toString(), "hi");
+  });
+});
+
+test("Content-Disposition sanitises the ascii filename and percent-encodes filename* for a name with a space, a quote, and a non-ASCII character", async (t) => {
+  process.env.JWT_SECRET = "test-secret";
+  t.after(() => { delete process.env.JWT_SECRET; t.mock.reset(); });
+
+  // Space, literal double quotes, and a non-ASCII letter (e with acute
+  // accent, U+00E9) written as an escape so the source file stays plain
+  // ASCII regardless of editor/terminal encoding.
+  const filename = "caf\u00e9 \"report\".pdf";
+
+  // Stubbed at the findOne boundary rather than routed through a real
+  // multipart upload: multer/busboy has its own, separate, pre-existing
+  // filename-decoding behaviour for non-ASCII multipart filenames that has
+  // nothing to do with this fix. Stubbing isolates the test to exactly the
+  // Content-Disposition construction in the GET handler.
+  t.mock.method(fakeAttachments, "findOne", async () => ({
+    accountId: "acc1",
+    filename,
+    mimeType: "application/pdf",
+    data: new Binary(Buffer.from("x")),
+  }));
+
+  await withServer(async (baseUrl) => {
+    const getRes = await fetch(`${baseUrl}/api/attachments/whatever-id`, { headers: authHeader("user1") });
+    const header = getRes.headers.get("content-disposition") || "";
+
+    const asciiMatch = header.match(/filename="([^"]*)"/);
+    const starMatch = header.match(/filename\*=UTF-8''([^;]+)/);
+    assert.ok(asciiMatch, `missing filename= parameter in: ${header}`);
+    assert.ok(starMatch, `missing filename*= parameter in: ${header}`);
+
+    // The ascii fallback is what Firefox/Safari save the file as verbatim
+    // (RFC 6266 section 4.3 -- it is never percent-decoded), so it must
+    // contain no raw quote/backslash (would break out of the quoted-string)
+    // and no non-ASCII byte.
+    assert.ok(!/["\\]/.test(asciiMatch[1]), `ascii filename still has a quote/backslash: ${asciiMatch[1]}`);
+    assert.ok(/^[\x20-\x7e]*$/.test(asciiMatch[1]), `ascii filename has a non-ASCII byte: ${asciiMatch[1]}`);
+
+    // filename* must decode back to the exact original name for browsers
+    // that do honour it.
+    assert.strictEqual(decodeURIComponent(starMatch[1]), filename);
+  });
+});
+
+test("GET sets a private, long-lived Cache-Control header and X-Content-Type-Options: nosniff", async (t) => {
+  process.env.JWT_SECRET = "test-secret";
+  t.after(() => { delete process.env.JWT_SECRET; });
+  attachmentStore.clear();
+
+  await withServer(async (baseUrl) => {
+    const upRes = await upload(baseUrl, "acc1", "user1", "cacheme.txt", Buffer.from("cache me"), "text/plain");
+    const [meta] = await upRes.json();
+
+    const getRes = await fetch(`${baseUrl}${meta.url}`, { headers: authHeader("user1") });
+    const cacheControl = getRes.headers.get("cache-control") || "";
+    // Attachments are immutable once uploaded and already gated behind auth
+    // + ownership, so a long-lived private cache is safe and keeps repeated
+    // thumbnail/document fetches off the shared apiLimiter budget that the
+    // old public /uploads mount never touched.
+    assert.match(cacheControl, /private/);
+    assert.match(cacheControl, /max-age=\d+/);
+    assert.strictEqual(getRes.headers.get("x-content-type-options"), "nosniff");
+  });
+});

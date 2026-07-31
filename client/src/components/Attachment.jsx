@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { FileText } from "lucide-react";
 import { C, MONO } from "../theme";
 import { api } from "../api";
+import { getOrFetchBlobUrl, peekBlobUrl, releaseBlobUrl } from "../lib/attachmentBlobCache";
 
 const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif"];
 
@@ -24,26 +25,44 @@ function formatSize(bytes) {
 }
 
 export default function Attachment({ att, onRemove }) {
-  const [blobUrl, setBlobUrl] = useState(null);
+  // Seed from whatever is already cached (e.g. this same attachment was
+  // rendered earlier in the session) so a remount shows the thumbnail
+  // immediately instead of flashing the placeholder while it refetches.
+  const [blobUrl, setBlobUrl] = useState(() => peekBlobUrl(att.id));
 
-  // Images need their bytes up front to show a thumbnail; documents only need
-  // them when the user actually clicks, so they are fetched on demand.
+  // Images need their bytes up front to show a thumbnail; documents only
+  // need them when the user actually clicks. Either way the fetch goes
+  // through the shared cache (attachmentBlobCache), so remounting this
+  // component -- or opening the same document twice -- reuses the one blob
+  // URL instead of creating and leaking another.
   useEffect(() => {
-    if (!isImage(att)) return;
-    let revoked = false;
-    let created = null;
-    api.fetchAttachment(att.id)
-      .then(url => { if (revoked) { URL.revokeObjectURL(url); return; } created = url; setBlobUrl(url); })
+    if (!isImage(att) || blobUrl) return;
+    let cancelled = false;
+    getOrFetchBlobUrl(att.id, api.fetchAttachment)
+      .then(url => { if (!cancelled) setBlobUrl(url); })
       .catch(() => {});
-    return () => { revoked = true; if (created) URL.revokeObjectURL(created); };
-  }, [att.id]);
+    // Deliberately no cleanup that revokes the URL here -- the cache, not
+    // this component instance, owns the URL's lifetime. `cancelled` only
+    // stops a late setState on an unmounted component.
+    return () => { cancelled = true; };
+  }, [att.id, blobUrl]);
 
   const open = async (e) => {
     e.preventDefault();
     try {
-      const url = blobUrl || await api.fetchAttachment(att.id);
+      const url = blobUrl || await getOrFetchBlobUrl(att.id, api.fetchAttachment);
+      if (!blobUrl) setBlobUrl(url);
       window.open(url, "_blank", "noopener");
     } catch (err) { /* the parent surfaces upload/list errors */ }
+  };
+
+  const handleRemove = async () => {
+    // Wait for the delete to settle before releasing the cache -- releasing
+    // first and having the delete fail would just cost an extra refetch
+    // next time this attachment is viewed, not a correctness problem, but
+    // there is no upside to doing it early.
+    await onRemove(att.id);
+    releaseBlobUrl(att.id);
   };
 
   const tileStyle = {
@@ -70,7 +89,7 @@ export default function Attachment({ att, onRemove }) {
           </div>
         )}
       </a>
-      <button onClick={() => onRemove(att.id)}
+      <button onClick={handleRemove}
               style={{ position: "absolute", top: -6, right: -6, background: C.crimson, borderRadius: "50%", width: 16, height: 16, color: "#fff", fontSize: 10, lineHeight: "16px" }}>×</button>
     </div>
   );
