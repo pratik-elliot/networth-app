@@ -49,6 +49,19 @@ export const api = {
     return URL.createObjectURL(await res.blob());
   },
 
+  statementStatus: () => fetch(`${BASE}/api/statements/status`, { headers: authHeaders() }).then(handle),
+  parseStatement: (accountId, file) => {
+    const fd = new FormData();
+    fd.append("statement", file);
+    return fetch(`${BASE}/api/statements/parse/${accountId}`, { method: "POST", headers: authHeaders(), body: fd }).then(handle);
+  },
+  bulkCreateTransactions: (accountId, rows) =>
+    fetch(`${BASE}/api/transactions/bulk`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders() },
+      body: JSON.stringify({ accountId, rows }),
+    }).then(handle),
+
   exportAll: () => fetch(`${BASE}/api/export`, { headers: authHeaders() }).then(handle),
 };
 

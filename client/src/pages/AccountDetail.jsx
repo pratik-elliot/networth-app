@@ -4,6 +4,7 @@ import { C, SERIF, MONO, typeInfo, fmt, latestValue, isStale, lastActivityDate, 
 import { Btn, StaleBadge, EmptyNote } from "../components/ui";
 import { api } from "../api";
 import Attachment from "../components/Attachment";
+import StatementImport from "../components/StatementImport";
 
 export default function AccountDetail({
   account, txByAccount, balByAccount, onBack, onAddTxn, onAddBalance, onUpdateValue, onEdit,
@@ -129,6 +130,10 @@ export default function AccountDetail({
             {(!account.images || account.images.length === 0) && <div style={{ color: C.ivoryDim, fontSize: 12 }}>No files yet.</div>}
           </div>
         </div>
+
+        {!isPhysical && (
+          <StatementImport accountId={account.id} onImported={onImagesChanged} />
+        )}
 
         <div className="flex gap-2 mt-4">
           <Btn variant="ghost" onClick={onEdit}><Pencil size={13} />Edit account</Btn>
