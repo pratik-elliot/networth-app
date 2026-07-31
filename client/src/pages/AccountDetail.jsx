@@ -1,28 +1,9 @@
 import React, { useRef, useState } from "react";
-import { ArrowLeft, Pencil, Plus, RefreshCw, Download, Users, Upload, Trash2, FileText } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, RefreshCw, Download, Users, Upload, Trash2 } from "lucide-react";
 import { C, SERIF, MONO, typeInfo, fmt, latestValue, isStale, lastActivityDate, PHYSICAL_TYPES } from "../theme";
 import { Btn, StaleBadge, EmptyNote } from "../components/ui";
 import { api } from "../api";
-
-const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif"];
-
-function fileExtension(att) {
-  const source = att.filename || att.url || "";
-  const ext = source.split("?")[0].split(".").pop();
-  return ext && ext !== source ? ext.toLowerCase() : "";
-}
-
-function isImage(att) {
-  if (att.mimeType) return att.mimeType.startsWith("image/");
-  return IMAGE_EXTENSIONS.includes(fileExtension(att));
-}
-
-function formatSize(bytes) {
-  if (!bytes) return "";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
+import Attachment from "../components/Attachment";
 
 export default function AccountDetail({
   account, txByAccount, balByAccount, onBack, onAddTxn, onAddBalance, onUpdateValue, onEdit,
@@ -143,27 +124,7 @@ export default function AccountDetail({
           )}
           <div className="flex gap-2 flex-wrap">
             {(account.images || []).map(att => (
-              <div key={att.id} style={{ position: "relative" }}>
-                <a href={att.url} target="_blank" rel="noreferrer" download={att.filename} title={`${att.filename}${formatSize(att.sizeBytes) ? ` · ${formatSize(att.sizeBytes)}` : ""}`}>
-                  {isImage(att) ? (
-                    <img src={att.url} alt={att.filename} style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 6, border: `1px solid ${C.hair}` }} />
-                  ) : (
-                    <div
-                      className="flex flex-col items-center justify-center"
-                      style={{ width: 64, height: 64, borderRadius: 6, border: `1px solid ${C.hair}`, background: C.panelHi, padding: 4 }}
-                    >
-                      <FileText size={20} style={{ color: C.teal }} />
-                      <div style={{ fontFamily: MONO, fontSize: 9, color: C.gold, marginTop: 2, textTransform: "uppercase" }}>
-                        {fileExtension(att) || "file"}
-                      </div>
-                      <div style={{ fontSize: 8, color: C.ivoryDim, maxWidth: 56, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        {att.filename}
-                      </div>
-                    </div>
-                  )}
-                </a>
-                <button onClick={() => removeFile(att.id)} style={{ position: "absolute", top: -6, right: -6, background: C.crimson, borderRadius: "50%", width: 16, height: 16, color: "#fff", fontSize: 10, lineHeight: "16px" }}>×</button>
-              </div>
+              <Attachment key={att.id} att={att} onRemove={removeFile} />
             ))}
             {(!account.images || account.images.length === 0) && <div style={{ color: C.ivoryDim, fontSize: 12 }}>No files yet.</div>}
           </div>

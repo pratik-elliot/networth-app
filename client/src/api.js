@@ -39,9 +39,15 @@ export const api = {
   uploadFiles: (accountId, files) => {
     const fd = new FormData();
     Array.from(files).forEach(f => fd.append("images", f));
-    return fetch(`${BASE}/api/images/account/${accountId}`, { method: "POST", headers: authHeaders(), body: fd }).then(handle);
+    return fetch(`${BASE}/api/attachments/account/${accountId}`, { method: "POST", headers: authHeaders(), body: fd }).then(handle);
   },
-  deleteFile: (id) => fetch(`${BASE}/api/images/${id}`, { method: "DELETE", headers: authHeaders() }).then(handle),
+  deleteFile: (id) => fetch(`${BASE}/api/attachments/${id}`, { method: "DELETE", headers: authHeaders() }).then(handle),
+
+  fetchAttachment: async (id) => {
+    const res = await fetch(`${BASE}/api/attachments/${id}`, { headers: authHeaders() });
+    if (!res.ok) throw new Error("Could not load that file.");
+    return URL.createObjectURL(await res.blob());
+  },
 
   exportAll: () => fetch(`${BASE}/api/export`, { headers: authHeaders() }).then(handle),
 };

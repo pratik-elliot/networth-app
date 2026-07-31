@@ -5,13 +5,12 @@ const path = require("path");
 const fs = require("fs");
 
 const db = require("./db");
-const { uploadDir } = require("./paths");
 const { apiLimiter } = require("./middleware/rateLimit");
 const authRoutes = require("./routes/auth");
 const accountRoutes = require("./routes/accounts");
 const transactionRoutes = require("./routes/transactions");
 const balanceRoutes = require("./routes/balances");
-const imageRoutes = require("./routes/images");
+const attachmentRoutes = require("./routes/attachments");
 const exportRoutes = require("./routes/exportData");
 
 const app = express();
@@ -24,7 +23,6 @@ app.set("trust proxy", 1);
 
 app.use(cors({ origin: process.env.CLIENT_ORIGIN || "*" }));
 app.use(express.json({ limit: "2mb" }));
-app.use("/uploads", express.static(uploadDir));
 
 // Declared before the rate limiter so Render's health checks are never throttled.
 app.get("/api/health", (req, res) => res.json({ ok: true }));
@@ -35,7 +33,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/accounts", accountRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use("/api/balances", balanceRoutes);
-app.use("/api/images", imageRoutes);
+app.use("/api/attachments", attachmentRoutes);
 app.use("/api/export", exportRoutes);
 
 // In production the client is built into client/dist and served by this
@@ -43,7 +41,7 @@ app.use("/api/export", exportRoutes);
 const clientDistPath = path.join(__dirname, "..", "..", "client", "dist");
 if (fs.existsSync(clientDistPath)) {
   app.use(express.static(clientDistPath));
-  app.get(/^\/(?!api|uploads).*/, (req, res) => {
+  app.get(/^\/(?!api).*/, (req, res) => {
     res.sendFile(path.join(clientDistPath, "index.html"));
   });
 }
