@@ -259,7 +259,49 @@ test("Content-Disposition sanitises the ascii filename and percent-encodes filen
   });
 });
 
-test("GET sets a private, long-lived Cache-Control header and X-Content-Type-Options: nosniff", async (t) => {
+test("Content-Disposition cannot be used to inject a CRLF-delimited header or split the response", async (t) => {
+  process.env.JWT_SECRET = "test-secret";
+  t.after(() => { delete process.env.JWT_SECRET; t.mock.reset(); });
+
+  // A classic header-injection payload: if this ever reached a raw header
+  // string unescaped, it would inject a second Set-Cookie header (or split
+  // the response entirely) into the reply to every future caller of this
+  // endpoint. The ascii fallback strips anything outside \x20-\x7e (which
+  // excludes CR 0x0D and LF 0x0A), and filename* runs the same string
+  // through encodeURIComponent, which percent-encodes CR/LF -- but nothing
+  // previously locked that in with a test.
+  const filename = 'evil\r\nSet-Cookie: hijacked=true\r\n\r\n"><script>.pdf';
+
+  t.mock.method(fakeAttachments, "findOne", async () => ({
+    accountId: "acc1",
+    filename,
+    mimeType: "application/pdf",
+    data: new Binary(Buffer.from("x")),
+  }));
+
+  await withServer(async (baseUrl) => {
+    const getRes = await fetch(`${baseUrl}/api/attachments/whatever-id`, { headers: authHeader("user1") });
+
+    // If injection had succeeded, this would already be a distinct header
+    // rather than part of Content-Disposition's value.
+    assert.strictEqual(getRes.headers.get("set-cookie"), null);
+
+    const header = getRes.headers.get("content-disposition") || "";
+    assert.ok(!/[\r\n]/.test(header), `Content-Disposition must contain no raw CR/LF: ${JSON.stringify(header)}`);
+
+    const asciiMatch = header.match(/filename="([^"]*)"/);
+    assert.ok(asciiMatch, `missing filename= parameter in: ${JSON.stringify(header)}`);
+    assert.ok(!/[\r\n]/.test(asciiMatch[1]), "ascii filename fallback must have stripped CR/LF");
+
+    const starMatch = header.match(/filename\*=UTF-8''([^;]+)/);
+    assert.ok(starMatch, `missing filename*= parameter in: ${JSON.stringify(header)}`);
+    // encodeURIComponent must have turned CR/LF into %0D/%0A, not passed
+    // them through raw.
+    assert.ok(/%0D%0A/i.test(starMatch[1]), "filename* must percent-encode the CR/LF, not carry it raw");
+  });
+});
+
+test("GET sets a private, long-lived Cache-Control header, X-Content-Type-Options: nosniff, and Vary: Authorization", async (t) => {
   process.env.JWT_SECRET = "test-secret";
   t.after(() => { delete process.env.JWT_SECRET; });
   attachmentStore.clear();
@@ -277,5 +319,14 @@ test("GET sets a private, long-lived Cache-Control header and X-Content-Type-Opt
     assert.match(cacheControl, /private/);
     assert.match(cacheControl, /max-age=\d+/);
     assert.strictEqual(getRes.headers.get("x-content-type-options"), "nosniff");
+
+    // A browser HTTP cache keys on URL + method only unless Vary says
+    // otherwise. This app's logout never reloads the page (see
+    // client/src/App.jsx), so without Vary: Authorization, a cached
+    // response for this URL could survive a session change on a shared
+    // device and be served to a different, now-logged-in user without ever
+    // reaching the ownership check above -- the exact hole moving off the
+    // public /uploads mount was meant to close.
+    assert.strictEqual(getRes.headers.get("vary"), "Authorization");
   });
 });

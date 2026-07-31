@@ -142,6 +142,15 @@ router.get("/:id", asyncHandler(async (req, res) => {
   // shared apiLimiter budget that the old public /uploads mount never
   // touched.
   res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
+  // A browser HTTP cache keys on URL + method, NOT on request headers,
+  // unless Vary says otherwise. Without this, logging out (this app never
+  // reloads the page on logout -- see client/src/App.jsx) would not evict a
+  // cached response, so a later request for the same URL from a different
+  // logged-in user on a shared device could be served straight out of the
+  // cache, bypassing the ownership check above entirely. Keying the cache on
+  // Authorization makes a credential change a cache-miss, the same way the
+  // check itself works today.
+  res.setHeader("Vary", "Authorization");
   res.send(bytes);
 }));
 
