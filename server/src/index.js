@@ -4,6 +4,7 @@ const cors = require("cors");
 const path = require("path");
 const fs = require("fs");
 
+const db = require("./db");
 const { uploadDir } = require("./paths");
 const { apiLimiter } = require("./middleware/rateLimit");
 const authRoutes = require("./routes/auth");
@@ -63,4 +64,14 @@ process.on("uncaughtException", (err) => {
 });
 
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => console.log(`Net Worth Ledger API listening on port ${PORT}`));
+
+// Serving requests before the database is connected would return confusing
+// errors, so connect first and fail loudly if it is unreachable.
+db.connect()
+  .then(() => {
+    app.listen(PORT, () => console.log(`Net Worth Ledger API listening on port ${PORT}`));
+  })
+  .catch((err) => {
+    console.error("Could not connect to MongoDB:", err.message);
+    process.exit(1);
+  });

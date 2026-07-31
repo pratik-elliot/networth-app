@@ -1,103 +1,46 @@
-const Database = require("better-sqlite3");
-const path = require("path");
-const fs = require("fs");
+const { MongoClient } = require("mongodb");
 require("dotenv").config();
 
-const dbPath = process.env.DB_PATH || "./data/networth.db";
-fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+const DB_NAME = process.env.MONGODB_DB || "networth";
 
-const db = new Database(dbPath);
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
+let client = null;
+let db = null;
 
-db.exec(`
-CREATE TABLE IF NOT EXISTS users (
-  id TEXT PRIMARY KEY,
-  email TEXT UNIQUE NOT NULL,
-  phone TEXT,
-  password_hash TEXT NOT NULL,
-  fx_rate REAL DEFAULT 83,
-  created_at TEXT NOT NULL
-);
+async function connect() {
+  if (db) return;
+  const uri = process.env.MONGODB_URI;
+  if (!uri) throw new Error("MONGODB_URI is not set. The server cannot start without a database.");
 
-CREATE TABLE IF NOT EXISTS otp_codes (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  code TEXT NOT NULL,
-  purpose TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
-  consumed INTEGER DEFAULT 0,
-  created_at TEXT NOT NULL
-);
+  client = new MongoClient(uri, { serverSelectionTimeoutMS: 15000 });
+  await client.connect();
+  db = client.db(DB_NAME);
 
-CREATE TABLE IF NOT EXISTS accounts (
-  id TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  name TEXT NOT NULL,
-  institution TEXT,
-  country TEXT,
-  currency TEXT NOT NULL,
-  type TEXT NOT NULL,
-  interest_rate REAL,
-  interest_frequency TEXT,
-  last_kyc_date TEXT,
-  is_liquid INTEGER,
-  notes TEXT,
-  created_date TEXT,
-  current_value REAL,
-  value_date TEXT,
-  value_url TEXT,
-  purity TEXT,
-  form TEXT,
-  quantity REAL,
-  city TEXT,
-  vin TEXT,
-  make TEXT,
-  model TEXT,
-  year TEXT,
-  address TEXT
-);
-
-CREATE TABLE IF NOT EXISTS nominees (
-  id TEXT PRIMARY KEY,
-  account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-  name TEXT,
-  relation TEXT,
-  percent REAL
-);
-
-CREATE TABLE IF NOT EXISTS transactions (
-  id TEXT PRIMARY KEY,
-  account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-  date TEXT NOT NULL,
-  description TEXT,
-  type TEXT NOT NULL,
-  amount REAL NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS balance_logs (
-  id TEXT PRIMARY KEY,
-  account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-  date TEXT NOT NULL,
-  balance REAL NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS account_images (
-  id TEXT PRIMARY KEY,
-  account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-  filename TEXT,
-  url_path TEXT,
-  uploaded_at TEXT
-);
-`);
-
-// Added when attachments grew beyond images to PDFs/spreadsheets; databases
-// created before that need the columns backfilled.
-function addColumnIfMissing(table, column, definition) {
-  const exists = db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === column);
-  if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  // Idempotent: createIndex is a no-op when the index already exists.
+  await Promise.all([
+    db.collection("users").createIndex({ email: 1 }, { unique: true }),
+    db.collection("accounts").createIndex({ userId: 1 }),
+    db.collection("transactions").createIndex({ accountId: 1 }),
+    db.collection("balanceLogs").createIndex({ accountId: 1 }),
+    db.collection("attachments").createIndex({ accountId: 1 }),
+  ]);
 }
-addColumnIfMissing("account_images", "mime_type", "TEXT");
-addColumnIfMissing("account_images", "size_bytes", "INTEGER");
 
-module.exports = db;
+async function close() {
+  if (client) await client.close();
+  client = null;
+  db = null;
+}
+
+function collections() {
+  if (!db) throw new Error("Database is not connected yet.");
+  return {
+    users: db.collection("users"),
+    accounts: db.collection("accounts"),
+    transactions: db.collection("transactions"),
+    balanceLogs: db.collection("balanceLogs"),
+    attachments: db.collection("attachments"),
+    otpCodes: db.collection("otpCodes"),
+  };
+}
+
+module.exports = { connect, close, collections };
