@@ -12,6 +12,7 @@ const transactionRoutes = require("./routes/transactions");
 const balanceRoutes = require("./routes/balances");
 const attachmentRoutes = require("./routes/attachments");
 const exportRoutes = require("./routes/exportData");
+const statementRoutes = require("./routes/statements");
 
 const app = express();
 
@@ -35,6 +36,7 @@ app.use("/api/transactions", transactionRoutes);
 app.use("/api/balances", balanceRoutes);
 app.use("/api/attachments", attachmentRoutes);
 app.use("/api/export", exportRoutes);
+app.use("/api/statements", statementRoutes);
 
 // In production the client is built into client/dist and served by this
 // same service, so the app runs as a single Render Web Service.

@@ -28,4 +28,14 @@ const apiLimiter = rateLimit({
   message: { error: "Too many requests. Please slow down and try again shortly." },
 });
 
-module.exports = { authLimiter, apiLimiter };
+// Each parse spends one of a limited number of daily upstream requests, so this
+// is far tighter than the general API ceiling.
+const importLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 20,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Too many statement imports. Please wait an hour and try again." },
+});
+
+module.exports = { authLimiter, apiLimiter, importLimiter };
