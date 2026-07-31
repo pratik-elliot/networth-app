@@ -101,9 +101,14 @@ router.post("/bulk", asyncHandler(async (req, res) => {
     // count-less 500 would duplicate every row that already landed.
     const insertedCount = typeof err.insertedCount === "number" ? err.insertedCount : 0;
     if (insertedCount > 0) {
-      return res.status(207).json({
+      // The client's shared `handle()` (client/src/api.js) only inspects the
+      // response body when `res.ok` is false -- a 2xx here (e.g. 207) would
+      // be treated as complete success and this warning would never reach
+      // the user, which is worse than a bare 500. Use a non-2xx status and
+      // put the count in `error`, the field `handle()` already reads.
+      return res.status(500).json({
         inserted: insertedCount,
-        error: `Import stopped partway through: ${insertedCount} of ${docs.length} rows were saved before a write error. Do not re-import this file as-is, or you will duplicate those ${insertedCount} rows.`,
+        error: `Import incomplete: only ${insertedCount} of ${docs.length} transactions were saved. Check the account before retrying so you do not import the first ${insertedCount} twice.`,
       });
     }
     // Nothing was written -- safe to let asyncHandler forward this to the

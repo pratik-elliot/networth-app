@@ -154,11 +154,18 @@ test("POST /api/transactions/bulk surfaces the partial insert count when insertM
         ],
       }),
     });
-    // Before the fix, this rejection reached the generic error handler and
-    // came back as a bare 500 with no count at all -- indistinguishable
-    // from "nothing was written," inviting a full-batch resubmit that would
-    // duplicate the 2 rows that already landed.
-    assert.notStrictEqual(res.status, 500);
+    // Two requirements at once here:
+    // 1. Before either fix, this rejection reached the generic error handler
+    //    and came back as a bare 500 with no count at all -- indistinguishable
+    //    from "nothing was written," inviting a full-batch resubmit that would
+    //    duplicate the 2 rows that already landed.
+    // 2. The status must be non-2xx (client/src/api.js's shared `handle()`
+    //    only reads the response body's `error` field when `res.ok` is
+    //    false -- a 2xx like 207 would be silently treated as full success
+    //    and this warning would never reach the user, which is worse than a
+    //    bare 500).
+    assert.strictEqual(res.ok, false);
+    assert.strictEqual(res.status, 500);
     const body = await res.json();
     assert.strictEqual(body.inserted, 2);
     assert.match(body.error, /2 of 3/);

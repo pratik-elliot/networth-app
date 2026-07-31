@@ -91,6 +91,73 @@ test("POST /api/balances/ rejects a non-numeric balance with 400 and never write
   });
 });
 
+test("POST /api/balances/ rejects Infinity with 400 and never writes to the DB", async (t) => {
+  process.env.JWT_SECRET = "test-secret";
+  t.after(() => {
+    delete process.env.JWT_SECRET;
+  });
+  insertOneCalls = 0;
+
+  await withServer(async (baseUrl) => {
+    // JSON has no literal for Infinity, but a client could still send the
+    // string form; Number("Infinity") is a real (non-finite) number, so
+    // this must be caught by Number.isFinite rather than slipping through
+    // now that the `<= 0` check (which would have rejected +Infinity as a
+    // side effect) is gone.
+    const res = await fetch(`${baseUrl}/api/balances/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeader() },
+      body: JSON.stringify({ accountId: "acc1", date: "2026-07-30", balance: "Infinity" }),
+    });
+    assert.strictEqual(res.status, 400);
+    assert.strictEqual(insertOneCalls, 0);
+  });
+});
+
+test("POST /api/balances/ accepts a zero balance and stores it as 0", async (t) => {
+  process.env.JWT_SECRET = "test-secret";
+  t.after(() => {
+    delete process.env.JWT_SECRET;
+  });
+  insertOneCalls = 0;
+
+  await withServer(async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api/balances/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeader() },
+      // Zero is a legitimate reading -- an emptied bank account, a spent
+      // cash account, a closed account -- not an error. A `<= 0` rejection
+      // (mirroring transactions.amount too literally) would wrongly block
+      // this. Only non-finite values (NaN/Infinity/missing) are invalid.
+      body: JSON.stringify({ accountId: "acc1", date: "2026-07-30", balance: 0 }),
+    });
+    assert.strictEqual(res.status, 200);
+    const body = await res.json();
+    assert.strictEqual(body.balance, 0);
+    assert.strictEqual(insertOneCalls, 1);
+  });
+});
+
+test("POST /api/balances/ accepts a negative balance and stores it as-is", async (t) => {
+  process.env.JWT_SECRET = "test-secret";
+  t.after(() => {
+    delete process.env.JWT_SECRET;
+  });
+  insertOneCalls = 0;
+
+  await withServer(async (baseUrl) => {
+    const res = await fetch(`${baseUrl}/api/balances/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeader() },
+      body: JSON.stringify({ accountId: "acc1", date: "2026-07-30", balance: -250.5 }),
+    });
+    assert.strictEqual(res.status, 200);
+    const body = await res.json();
+    assert.strictEqual(body.balance, -250.5);
+    assert.strictEqual(insertOneCalls, 1);
+  });
+});
+
 test("POST /api/balances/ rejects an impossible calendar date (2026-02-31) with 400 and never writes to the DB", async (t) => {
   process.env.JWT_SECRET = "test-secret";
   t.after(() => {

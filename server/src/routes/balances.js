@@ -39,11 +39,14 @@ router.post("/", asyncHandler(async (req, res) => {
   // Without this, a missing or non-numeric balance coerces to NaN,
   // JSON.stringify({balance: NaN}) serialises as `null`, and the client
   // sees 200 OK while a NaN is written to Mongo -- poisoning every future
-  // sum/sort over this ledger. Mirrors the finite+positive check /bulk
-  // uses in transactions.js.
+  // sum/sort over this ledger. Unlike transactions.amount (whose sign is
+  // carried separately by `type`, so the magnitude must be positive), a
+  // balance has no separate sign carrier and zero/negative are legitimate
+  // readings (an emptied account, an overdrawn one) -- only non-finite
+  // values (NaN, Infinity, missing) are rejected.
   if (!isValidCalendarDate(date)) return res.status(400).json({ error: `Invalid date: ${date}` });
   const numBalance = Number(balance);
-  if (!Number.isFinite(numBalance) || numBalance <= 0) return res.status(400).json({ error: `Invalid balance: ${balance}` });
+  if (!Number.isFinite(numBalance)) return res.status(400).json({ error: `Invalid balance: ${balance}` });
 
   const doc = { _id: uuid(), accountId, date, balance: numBalance };
   const { balanceLogs } = collections();
