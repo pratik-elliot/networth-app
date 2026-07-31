@@ -63,13 +63,42 @@ process.on("uncaughtException", (err) => {
 
 const PORT = process.env.PORT || 4000;
 
+let server;
+
 // Serving requests before the database is connected would return confusing
 // errors, so connect first and fail loudly if it is unreachable.
 db.connect()
   .then(() => {
-    app.listen(PORT, () => console.log(`Net Worth Ledger API listening on port ${PORT}`));
+    server = app.listen(PORT, () => console.log(`Net Worth Ledger API listening on port ${PORT}`));
   })
   .catch((err) => {
     console.error("Could not connect to MongoDB:", err.message);
     process.exit(1);
   });
+
+// Render sends SIGTERM on every deploy/restart. Without a handler, in-flight
+// requests are cut mid-response and the Atlas connection pool is abandoned
+// to time out on its own rather than closed. server.close() stops accepting
+// new connections but lets in-flight ones finish before its callback fires;
+// only then is the DB connection closed and the process exited cleanly. The
+// timeout below is a safety net in case a connection never finishes (e.g. a
+// stuck keep-alive) -- it forces an exit instead of hanging the deploy
+// forever, and is unref()'d so it never itself keeps the process alive.
+let shuttingDown = false;
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`${signal} received, shutting down gracefully...`);
+
+  const forceExit = setTimeout(() => {
+    console.error("Graceful shutdown timed out; forcing exit.");
+    process.exit(1);
+  }, 10000);
+  forceExit.unref();
+
+  const finish = () => db.close().finally(() => process.exit(0));
+  if (server) server.close(finish);
+  else finish();
+}
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));

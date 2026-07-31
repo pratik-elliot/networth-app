@@ -3,6 +3,7 @@ const { v4: uuid } = require("uuid");
 const { collections } = require("../db");
 const asyncHandler = require("../utils/asyncHandler");
 const { requireAuth } = require("../middleware/auth");
+const { isValidCalendarDate } = require("../services/validation");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -10,16 +11,6 @@ router.use(requireAuth);
 async function accountBelongsToUser(accountId, userId) {
   const { accounts } = collections();
   return !!(await accounts.findOne({ _id: accountId, userId }, { projection: { _id: 1 } }));
-}
-
-// Kept identical to transactions.js's helper of the same name: a regex like
-// /^\d{4}-\d{2}-\d{2}$/ matches "2026-02-31", which is not a real calendar
-// date. Round-trip through Date.UTC and confirm the year/month/day survive.
-function isValidCalendarDate(str) {
-  if (typeof str !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(str)) return false;
-  const [y, m, d] = str.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
 }
 
 router.get("/account/:accountId", asyncHandler(async (req, res) => {

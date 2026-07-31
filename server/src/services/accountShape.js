@@ -46,6 +46,7 @@ function toApiAccount(doc) {
       url: `/api/attachments/${i.id}`,
       mimeType: i.mimeType ?? null,
       sizeBytes: i.sizeBytes ?? null,
+      uploadedAt: i.uploadedAt ?? null,
     })),
   };
 }
