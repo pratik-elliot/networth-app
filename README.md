@@ -93,7 +93,7 @@ This is a Progressive Web App (PWA); a basic manifest is already included in
 
 ## 4. What's simulated vs. real here
 
-- **Login security**: real — password + a genuinely emailed one-time code, backed by a real database, not a local-only passcode.
+- **Login security**: email + password against a real database, with bcrypt-hashed passwords and IP-based rate limiting (15 failed sign-in attempts per 15 minutes; successful logins aren't counted). The emailed one-time code is currently **disabled** — `utils/mailer.js` and the `otp_codes` table are still in place, so two-step login can be restored by reinstating the OTP issue/verify routes in `routes/auth.js`. Until then your password is the only credential, so make it a strong, unique one.
 - **Data storage**: real — a SQLite database on your server, shared across every device you log in from.
 - **Full history export, no record limits**: real — Reports → Download Full Data pulls everything, unpaginated.
 - **File attachments**: real — each account accepts images, PDF, CSV, Excel (.xls/.xlsx), Word (.doc/.docx) and .txt files, up to 25MB each and 10 at a time. Images render as thumbnails; documents show as a labelled tile you can click to open or download. Note these are *stored as attachments* — uploading a CSV/XLSX statement does not yet parse it into transactions.

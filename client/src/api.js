@@ -19,8 +19,6 @@ export const api = {
     fetch(`${BASE}/api/auth/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, phone }) }).then(handle),
   login: (email, password) =>
     fetch(`${BASE}/api/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) }).then(handle),
-  verifyOtp: (userId, code) =>
-    fetch(`${BASE}/api/auth/verify-otp`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId, code }) }).then(handle),
   me: () => fetch(`${BASE}/api/auth/me`, { headers: authHeaders() }).then(handle),
   updateMe: (data) => fetch(`${BASE}/api/auth/me`, { method: "PUT", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(data) }).then(handle),
 

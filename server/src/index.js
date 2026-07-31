@@ -5,6 +5,7 @@ const path = require("path");
 const fs = require("fs");
 
 const { uploadDir } = require("./paths");
+const { apiLimiter } = require("./middleware/rateLimit");
 const authRoutes = require("./routes/auth");
 const accountRoutes = require("./routes/accounts");
 const transactionRoutes = require("./routes/transactions");
@@ -13,11 +14,21 @@ const imageRoutes = require("./routes/images");
 const exportRoutes = require("./routes/exportData");
 
 const app = express();
+
+// Render serves this behind a proxy, so the client address arrives in
+// X-Forwarded-For. Trust exactly one hop: without this req.ip is the proxy for
+// every request (so one abusive client would rate-limit everybody), and
+// trusting all hops would let a client spoof its IP and bypass the limits.
+app.set("trust proxy", 1);
+
 app.use(cors({ origin: process.env.CLIENT_ORIGIN || "*" }));
 app.use(express.json({ limit: "2mb" }));
 app.use("/uploads", express.static(uploadDir));
 
+// Declared before the rate limiter so Render's health checks are never throttled.
 app.get("/api/health", (req, res) => res.json({ ok: true }));
+
+app.use("/api", apiLimiter);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/accounts", accountRoutes);
