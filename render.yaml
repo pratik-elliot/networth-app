@@ -32,8 +32,14 @@ services:
       # CORS isn't actually exercised, but the app still needs a value.
       - key: CLIENT_ORIGIN
         value: "*"
-      # Fill these in from the Render dashboard (Environment tab) so OTP
-      # login codes get emailed instead of just printed to the service logs.
+      # Email delivery for OTP login codes. Set RESEND_API_KEY from the Render
+      # dashboard (Environment tab) — Resend sends over HTTPS, which works on
+      # the free plan. Render blocks outbound SMTP ports 25/465/587 on free
+      # instances, so the SMTP_* settings below only work on a paid plan.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
       - key: SMTP_HOST
         sync: false
       - key: SMTP_PORT
