@@ -75,7 +75,7 @@ export default function AccountDetail({
           </div>
         </div>
 
-        <div className="grid grid-cols-4 gap-3 mt-4" style={{ fontSize: 12.5, color: C.ivoryDim }}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4" style={{ fontSize: 12.5, color: C.ivoryDim }}>
           {account.lastKYCDate && <div>Last KYC: <b style={{ color: C.ivory }}>{account.lastKYCDate}</b></div>}
           {account.interestRate ? <div>Interest: <b style={{ color: C.ivory }}>{account.interestRate}% ({account.interestFrequency})</b></div> : null}
           {(account.type === "gold" || account.type === "silver") && (
@@ -135,7 +135,7 @@ export default function AccountDetail({
           <StatementImport accountId={account.id} onImported={onImagesChanged} />
         )}
 
-        <div className="flex gap-2 mt-4">
+        <div className="flex gap-2 mt-4 flex-wrap">
           <Btn variant="ghost" onClick={onEdit}><Pencil size={13} />Edit account</Btn>
           {isPhysical ? <Btn onClick={onUpdateValue}><RefreshCw size={13} />Update Value</Btn> : (
             <>
@@ -148,7 +148,7 @@ export default function AccountDetail({
       </div>
 
       {!isPhysical && (
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div style={{ background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 10, padding: 16 }}>
             <div style={{ color: C.ivory, fontFamily: SERIF, fontSize: 15, marginBottom: 8 }}>Transaction History ({txns.length})</div>
             <div style={{ maxHeight: 380, overflowY: "auto" }}>

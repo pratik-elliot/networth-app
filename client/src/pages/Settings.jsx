@@ -45,7 +45,7 @@ export default function SettingsPanel({ me, onSaved, onLogout }) {
         </p>
       </div>
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         <Btn onClick={save}><Check size={14} />{saved ? "Saved" : "Save Settings"}</Btn>
         <Btn variant="ghost" onClick={onLogout}><LogOut size={14} />Log out</Btn>
       </div>

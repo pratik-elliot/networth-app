@@ -25,7 +25,7 @@ export default function AccountForm({ initial, onSave, onClose }) {
 
   return (
     <Modal title={initial ? "Edit Account" : "Add Account"} onClose={onClose} wide>
-      <div className="grid grid-cols-2 gap-x-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
         <Field label="Account Name"><TInput value={a.name} onChange={e => set("name", e.target.value)} placeholder="e.g. HDFC Savings, Vault Locker #204" /></Field>
         <Field label="Account Type">
           <TSelect value={a.type} onChange={e => set("type", e.target.value)}>
@@ -62,7 +62,7 @@ export default function AccountForm({ initial, onSave, onClose }) {
       {(a.type === "gold" || a.type === "silver") && (
         <div style={{ borderTop: `1px solid ${C.hair}`, marginTop: 8, paddingTop: 12 }}>
           <div style={{ color: C.gold, fontSize: 13, marginBottom: 8 }}>Holding details</div>
-          <div className="grid grid-cols-2 gap-x-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
             <Field label="Purity (e.g. 24K, 22K, 999)"><TInput value={a.purity || ""} onChange={e => set("purity", e.target.value)} /></Field>
             <Field label="Form">
               <TSelect value={a.form || "Coin"} onChange={e => set("form", e.target.value)}><option>Coin</option><option>Bar</option><option>Ornament</option></TSelect>
@@ -76,7 +76,7 @@ export default function AccountForm({ initial, onSave, onClose }) {
       {a.type === "automobile" && (
         <div style={{ borderTop: `1px solid ${C.hair}`, marginTop: 8, paddingTop: 12 }}>
           <div style={{ color: C.gold, fontSize: 13, marginBottom: 8 }}>Vehicle details</div>
-          <div className="grid grid-cols-2 gap-x-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
             <Field label="VIN"><TInput value={a.vin || ""} onChange={e => set("vin", e.target.value.toUpperCase())} /></Field>
             <Field label="Year"><TInput value={a.year || ""} onChange={e => set("year", e.target.value)} /></Field>
             <Field label="Make"><TInput value={a.make || ""} onChange={e => set("make", e.target.value)} /></Field>
@@ -94,7 +94,7 @@ export default function AccountForm({ initial, onSave, onClose }) {
       {isPhysical && (
         <div style={{ borderTop: `1px solid ${C.hair}`, marginTop: 8, paddingTop: 12 }}>
           <div style={{ color: C.gold, fontSize: 13, marginBottom: 8 }}>Current value (use "Update Value" on the account page later to log a sourced update)</div>
-          <div className="grid grid-cols-3 gap-x-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4">
             <Field label={`Current Value (${a.currency})`}><TInput type="number" value={a.currentValue || ""} onChange={e => set("currentValue", e.target.value)} /></Field>
             <Field label="Value As Of"><TInput type="date" value={a.valueDate || ""} onChange={e => set("valueDate", e.target.value)} /></Field>
             <Field label="Source URL"><TInput value={a.valueUrl || ""} onChange={e => set("valueUrl", e.target.value)} placeholder="https://…" /></Field>

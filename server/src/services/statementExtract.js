@@ -31,7 +31,34 @@ function describeFailure(status, bodyText) {
       "Set OPENROUTER_MODEL to a model that has a ZDR provider."
     );
   }
-  return `OpenRouter returned ${status}.`;
+  // Surface whatever the provider actually said. A bare status code sends the
+  // reader hunting through logs for a diagnostic that was in the response all
+  // along — e.g. "does not support feature: structured-outputs".
+  const detail = upstreamMessage(bodyText);
+  return detail ? `OpenRouter returned ${status}: ${detail}` : `OpenRouter returned ${status}.`;
+}
+
+/* OpenRouter nests the provider's own message inside error.metadata.raw, which
+   is itself a JSON string. Dig it out, falling back to the outer message. */
+function upstreamMessage(bodyText) {
+  if (!bodyText) return "";
+  try {
+    const body = JSON.parse(bodyText);
+    const err = body && body.error;
+    if (!err) return "";
+    const raw = err.metadata && err.metadata.raw;
+    if (typeof raw === "string") {
+      try {
+        const inner = JSON.parse(raw);
+        if (inner && inner.message) return String(inner.message);
+      } catch (e) {
+        return raw.slice(0, 300);
+      }
+    }
+    return err.message ? String(err.message) : "";
+  } catch (e) {
+    return String(bodyText).slice(0, 300);
+  }
 }
 
 /* Some models wrap JSON in a markdown code fence despite being asked not to. */
@@ -65,7 +92,11 @@ async function extractTransactions(text, opts = {}) {
         // request fails rather than silently downgrading if no ZDR endpoint
         // exists — failing closed is the intended behaviour here.
         provider: { zdr: true, data_collection: "deny" },
-        response_format: { type: "json_object" },
+        // Deliberately NOT sending response_format. The default model
+        // (ling-3.0-flash) rejects it outright with "does not support feature:
+        // structured-outputs", and requiring it would silently rule out every
+        // other model that lacks the feature. The system prompt asks for JSON
+        // and parseModelJson tolerates a code-fenced reply, which covers it.
         temperature: 0,
         messages: [
           { role: "system", content: SYSTEM_PROMPT },

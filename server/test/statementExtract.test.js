@@ -116,6 +116,43 @@ test("extractTransactions tolerates a model that wraps JSON in code fences", asy
   assert.strictEqual(out.length, 1);
 });
 
+test("extractTransactions does not send response_format", async () => {
+  // The default model rejects structured outputs outright with a 400, so
+  // requiring the feature would break every import.
+  process.env.OPENROUTER_API_KEY = "test-key";
+  const fetchImpl = stubFetch(modelSaid({ transactions: [] }));
+  await loadFresh().extractTransactions("text", { fetchImpl });
+  const body = JSON.parse(fetchImpl.calls[0].init.body);
+  assert.strictEqual(body.response_format, undefined);
+});
+
+test("extractTransactions surfaces the provider's own error message", async () => {
+  // A bare "returned 400" sends the reader hunting for a diagnostic that was
+  // in the response body all along.
+  process.env.OPENROUTER_API_KEY = "test-key";
+  const upstream = {
+    error: {
+      message: "Provider returned error",
+      code: 400,
+      metadata: {
+        raw: JSON.stringify({ code: 400, message: "model: some/model does not support feature: structured-outputs" }),
+        provider_name: "Novita",
+      },
+    },
+  };
+  const fetchImpl = stubFetch(upstream, { status: 400 });
+  await assert.rejects(
+    () => loadFresh().extractTransactions("text", { fetchImpl }),
+    /does not support feature: structured-outputs/
+  );
+});
+
+test("extractTransactions falls back to the outer message when there is no nested raw", async () => {
+  process.env.OPENROUTER_API_KEY = "test-key";
+  const fetchImpl = stubFetch({ error: { message: "context length exceeded" } }, { status: 400 });
+  await assert.rejects(() => loadFresh().extractTransactions("text", { fetchImpl }), /context length exceeded/);
+});
+
 test("extractTransactions refuses to run without an API key", async () => {
   delete process.env.OPENROUTER_API_KEY;
   await assert.rejects(() => loadFresh().extractTransactions("text", {}), /not configured/i);

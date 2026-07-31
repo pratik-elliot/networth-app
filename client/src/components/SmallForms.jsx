@@ -8,7 +8,7 @@ export function TransactionForm({ account, onSave, onClose }) {
     <Modal title="Log Transaction" onClose={onClose}>
       <Field label="Date"><TInput type="date" value={t.date} onChange={e => setT({ ...t, date: e.target.value })} /></Field>
       <Field label="Description"><TInput value={t.description} onChange={e => setT({ ...t, description: e.target.value })} placeholder="e.g. Salary credit, wire transfer" /></Field>
-      <div className="grid grid-cols-2 gap-x-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
         <Field label="Type">
           <TSelect value={t.type} onChange={e => setT({ ...t, type: e.target.value })}>
             <option value="credit">Credit (+)</option><option value="debit">Debit (-)</option>

@@ -88,12 +88,13 @@ export default function App() {
 
   return (
     <div style={{ minHeight: "100vh", background: C.ink, fontFamily: SANS }}>
-      <div style={{ borderBottom: `1px solid ${C.hair}`, padding: "16px 28px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ borderBottom: `1px solid ${C.hair}`, padding: "16px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div className="flex items-center gap-2">
           <Coins size={20} color={C.gold} />
-          <span style={{ fontFamily: SERIF, fontSize: 20, color: C.ivory, letterSpacing: "0.02em" }}>Net Worth Ledger</span>
+          {/* Without nowrap the brand breaks onto three lines on a phone. */}
+          <span style={{ fontFamily: SERIF, fontSize: 20, color: C.ivory, letterSpacing: "0.02em", whiteSpace: "nowrap" }}>Net Worth Ledger</span>
         </div>
-        <div className="flex gap-1">
+        <div className="flex gap-1 flex-wrap">
           {NAV.map(n => (
             <button key={n.id} onClick={() => { setTab(n.id); setSelectedId(null); }}
               style={{ padding: "7px 14px", borderRadius: 6, fontSize: 13.5, color: tab === n.id ? C.ink : C.ivoryDim, background: tab === n.id ? C.gold : "transparent" }}>

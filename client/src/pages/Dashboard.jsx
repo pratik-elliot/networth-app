@@ -40,7 +40,7 @@ export default function Dashboard({ accounts, txByAccount, balByAccount, fxRate 
 
   return (
     <div>
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div style={{ background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 10, padding: 18 }}>
           <div style={{ color: C.ivoryDim, fontSize: 12, textTransform: "uppercase", letterSpacing: "0.06em" }}>Combined Net Worth (est., ~USD)</div>
           <div style={{ fontFamily: SERIF, fontSize: 32, color: C.gold, marginTop: 4 }}>{fmt(combinedUSD, "USD")}</div>
@@ -58,7 +58,7 @@ export default function Dashboard({ accounts, txByAccount, balByAccount, fxRate 
         ))}
       </div>
 
-      <div className="grid grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
         <div style={{ background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 10, padding: 18, height: 300 }}>
           <div style={{ color: C.ivory, fontFamily: SERIF, fontSize: 16, marginBottom: 8 }}>Allocation by Account Type</div>
           {byType.length ? (
