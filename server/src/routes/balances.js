@@ -1,34 +1,45 @@
 const express = require("express");
 const { v4: uuid } = require("uuid");
-const db = require("../db");
+const { collections } = require("../db");
+const asyncHandler = require("../utils/asyncHandler");
 const { requireAuth } = require("../middleware/auth");
 
 const router = express.Router();
 router.use(requireAuth);
 
-function accountBelongsToUser(accountId, userId) {
-  return !!db.prepare("SELECT id FROM accounts WHERE id = ? AND user_id = ?").get(accountId, userId);
+async function accountBelongsToUser(accountId, userId) {
+  const { accounts } = collections();
+  return !!(await accounts.findOne({ _id: accountId, userId }, { projection: { _id: 1 } }));
 }
 
-router.get("/account/:accountId", (req, res) => {
-  if (!accountBelongsToUser(req.params.accountId, req.userId)) return res.status(404).json({ error: "Account not found." });
-  const rows = db.prepare("SELECT * FROM balance_logs WHERE account_id = ? ORDER BY date DESC").all(req.params.accountId);
-  res.json(rows.map(r => ({ id: r.id, accountId: r.account_id, date: r.date, balance: r.balance })));
-});
+router.get("/account/:accountId", asyncHandler(async (req, res) => {
+  if (!(await accountBelongsToUser(req.params.accountId, req.userId))) {
+    return res.status(404).json({ error: "Account not found." });
+  }
+  const { balanceLogs } = collections();
+  const docs = await balanceLogs.find({ accountId: req.params.accountId }).sort({ date: -1 }).toArray();
+  res.json(docs.map(d => ({ id: d._id, accountId: d.accountId, date: d.date, balance: d.balance })));
+}));
 
-router.post("/", (req, res) => {
+router.post("/", asyncHandler(async (req, res) => {
   const { accountId, date, balance } = req.body;
-  if (!accountBelongsToUser(accountId, req.userId)) return res.status(404).json({ error: "Account not found." });
-  const id = uuid();
-  db.prepare("INSERT INTO balance_logs (id, account_id, date, balance) VALUES (?, ?, ?, ?)").run(id, accountId, date, balance);
-  res.json({ id, accountId, date, balance });
-});
+  if (!(await accountBelongsToUser(accountId, req.userId))) {
+    return res.status(404).json({ error: "Account not found." });
+  }
+  const doc = { _id: uuid(), accountId, date, balance: Number(balance) };
+  const { balanceLogs } = collections();
+  await balanceLogs.insertOne(doc);
+  res.json({ id: doc._id, accountId, date, balance: doc.balance });
+}));
 
-router.delete("/:id", (req, res) => {
-  const row = db.prepare("SELECT * FROM balance_logs WHERE id = ?").get(req.params.id);
-  if (!row || !accountBelongsToUser(row.account_id, req.userId)) return res.status(404).json({ error: "Not found." });
-  db.prepare("DELETE FROM balance_logs WHERE id = ?").run(req.params.id);
+router.delete("/:id", asyncHandler(async (req, res) => {
+  const { balanceLogs } = collections();
+  const doc = await balanceLogs.findOne({ _id: req.params.id });
+  if (!doc || !(await accountBelongsToUser(doc.accountId, req.userId))) {
+    return res.status(404).json({ error: "Not found." });
+  }
+  await balanceLogs.deleteOne({ _id: req.params.id });
   res.json({ ok: true });
-});
+}));
 
 module.exports = router;
