@@ -91,7 +91,14 @@ This is a Progressive Web App (PWA); a basic manifest is already included in
 - **Login security**: email + password against a real database, with bcrypt-hashed passwords and IP-based rate limiting (15 failed sign-in attempts per 15 minutes; successful logins aren't counted). The emailed one-time code is currently **disabled** — `utils/mailer.js` and the `otpCodes` collection are still in place, so two-step login can be restored by reinstating the OTP issue/verify routes in `routes/auth.js`. Until then your password is the only credential, so make it a strong, unique one.
 - **Data storage**: real — a MongoDB Atlas database, shared across every device you log in from.
 - **Full history export, no record limits**: real — Reports → Download Full Data pulls everything, unpaginated.
-- **File attachments**: real — each account accepts images, PDF, CSV, Excel (.xls/.xlsx), Word (.doc/.docx) and .txt files, up to 8MB each and 10 at a time (Atlas' free tier allows 512MB in total, hence the smaller per-file cap than the old disk-based limit). Images render as thumbnails; documents show as a labelled tile you can click to open or download. Note these are *stored as attachments* — uploading a CSV/XLSX statement does not yet parse it into transactions.
+- **File attachments**: real — each account accepts images, PDF, CSV, Excel (.xls/.xlsx), Word (.doc/.docx) and .txt files, up to 8MB each and 10 at a time (Atlas' free tier allows 512MB in total, hence the smaller per-file cap than the old disk-based limit). Images render as thumbnails; documents show as a labelled tile you can click to open or download. Note these are *stored as attachments* — to turn a statement into transactions, use Import statement instead (below).
+- **Statement import**: real — upload a PDF, CSV or Excel bank statement to an account and its
+  rows are extracted into transactions. Text-layer PDFs only; a scanned statement is detected and
+  reported rather than guessed at. Extraction uses a model on OpenRouter, and every request demands
+  a zero-data-retention provider, failing rather than sending your statement to one that would
+  retain it. Nothing is saved until you review an editable table and confirm; rows matching
+  existing transactions are flagged and unticked so re-importing an overlapping statement cannot
+  double-count. Requires `OPENROUTER_API_KEY` — the feature hides itself when it is unset.
 - **Automatic value lookups** (gold/property/vehicle pricing from public sources): **not automated** — no backend service here calls external pricing APIs. The "Update Value" flow asks you to paste in the figure, date, and source URL after you look it up, fully editable later. Wiring up a real price-lookup service (e.g. a gold-price API, a VIN-decoding + valuation API) is a natural next step once this is live — happy to add it.
 - **Google Drive / Dropbox sync**: **not included**. Your database *is* the persistent store now, which is more reliable than syncing files. If you specifically want a copy mirrored to Drive/Dropbox, that needs OAuth app credentials from Google/Dropbox — let me know if you want that added later.
 

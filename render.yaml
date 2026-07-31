@@ -21,6 +21,12 @@ services:
         sync: false
       - key: MONGODB_DB
         value: networth
+      # Statement import. Set the key in the dashboard; every request demands a
+      # zero-data-retention provider and fails closed if none is available.
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: inclusionai/ling-3.0-flash:free
       # Same-origin deployment (client is served by this same service), so
       # CORS isn't actually exercised, but the app still needs a value.
       - key: CLIENT_ORIGIN
