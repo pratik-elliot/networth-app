@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- **The API response shape must not change.** The client is not modified by this plan. Every endpoint returns exactly the fields it returns today (`id`, not `_id`).
+- **The API response shape must not change, with one deliberate exception.** Every endpoint returns exactly the fields it returns today, exposing `id` and never `_id` or `userId`. The single exception is attachments (Task 5): the `url` field changes from `/uploads/<file>` to `/api/attachments/<id>` and now requires an auth header, so Task 5 also updates `client/src/api.js` and adds `client/src/components/Attachment.jsx`. No other task touches the client.
 - Ids remain UUID v4 **strings** stored as `_id`. Do not introduce `ObjectId`.
 - `better-sqlite3` MUST be removed from `server/package.json`. It cannot compile on Windows and is what currently blocks local development.
 - The Mongo driver is **async**. Every route handler that touches the database becomes `async` and MUST be wrapped in `asyncHandler` (`server/src/utils/asyncHandler.js`). An unhandled rejection kills the process on Node 20 — this already caused an outage.
