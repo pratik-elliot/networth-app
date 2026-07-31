@@ -1,6 +1,15 @@
-# Statement Import (PDF + CSV) Implementation Plan
+# Statement Import (PDF + CSV) Implementation Plan — SUPERSEDED
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **DO NOT EXECUTE THIS PLAN.** It is superseded by
+> `docs/superpowers/plans/2026-08-01-statement-import.md`.
+>
+> It is retained only as a record. Three things in it are now wrong:
+> - It targets SQLite (`db.prepare`), which no longer exists — the app is on MongoDB.
+> - Its Task 5 (bulk insert) is already built, as part of the MongoDB migration.
+> - Its `pdf-parse` code uses the v1 callable API; v2 exports a `PDFParse` class instead,
+>   so that code would fail at runtime.
+>
+> It also predates the requirement to support XLSX.
 
 **Goal:** Let a user upload a PDF or CSV bank statement to an account, have its rows extracted into transactions, review them in an editable table, and save the ones they confirm.
 
