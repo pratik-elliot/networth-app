@@ -4,6 +4,7 @@ const jwt = require("jsonwebtoken");
 const { v4: uuid } = require("uuid");
 const db = require("../db");
 const { sendOtpEmail } = require("../utils/mailer");
+const asyncHandler = require("../utils/asyncHandler");
 const { requireAuth } = require("../middleware/auth");
 
 const router = express.Router();
@@ -13,7 +14,7 @@ function makeOtp() {
 }
 
 /* Register a new user (email + password). No OTP needed at signup. */
-router.post("/register", async (req, res) => {
+router.post("/register", asyncHandler(async (req, res) => {
   const { email, password, phone } = req.body;
   if (!email || !password) return res.status(400).json({ error: "Email and password are required." });
   const existing = db.prepare("SELECT id FROM users WHERE email = ?").get(email.toLowerCase());
@@ -27,10 +28,10 @@ router.post("/register", async (req, res) => {
 
   const token = jwt.sign({ sub: id }, process.env.JWT_SECRET, { expiresIn: "7d" });
   res.json({ token, user: { id, email: email.toLowerCase(), phone } });
-});
+}));
 
 /* Step 1 of login: verify password, then email a one-time code. */
-router.post("/login", async (req, res) => {
+router.post("/login", asyncHandler(async (req, res) => {
   const { email, password } = req.body;
   const user = db.prepare("SELECT * FROM users WHERE email = ?").get((email || "").toLowerCase());
   if (!user) return res.status(401).json({ error: "Invalid email or password." });
@@ -45,14 +46,24 @@ router.post("/login", async (req, res) => {
   ).run(uuid(), user.id, code, expiresAt, new Date().toISOString());
 
   const result = await sendOtpEmail(user.email, code);
+  let message;
+  if (result.delivered) {
+    message = "Password verified. A verification code has been emailed to you.";
+  } else if (result.devMode) {
+    message = "Password verified. SMTP isn't configured, so the code was printed to the server logs instead of emailed.";
+  } else {
+    message = "Password verified, but the verification email could not be sent. The code was written to the server logs — check your Render logs to retrieve it.";
+  }
+
   res.json({
-    message: result.devMode
-      ? "Password verified. SMTP isn't configured, so the code was printed to the server console instead of emailed."
-      : "Password verified. A verification code has been emailed to you.",
+    message,
     userId: user.id,
-    devMode: result.devMode,
+    // The client uses this to tell the user to look somewhere other than
+    // their inbox for the code.
+    devMode: result.devMode || !result.delivered,
+    emailDelivered: !!result.delivered,
   });
-});
+}));
 
 /* Step 2 of login: verify the OTP code, issue a session token. */
 router.post("/verify-otp", (req, res) => {

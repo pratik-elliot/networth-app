@@ -41,5 +41,15 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "Something went wrong on the server." });
 });
 
+// Last line of defence: Node 20 exits on an unhandled rejection by default, so
+// a single failed outbound call could otherwise take the whole service down.
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled promise rejection (service kept alive):", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception, shutting down so the platform can restart cleanly:", err);
+  process.exit(1);
+});
+
 const PORT = process.env.PORT || 4000;
 app.listen(PORT, () => console.log(`Net Worth Ledger API listening on port ${PORT}`));
