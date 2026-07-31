@@ -26,9 +26,12 @@ async function connect() {
 }
 
 async function close() {
-  if (client) await client.close();
-  client = null;
-  db = null;
+  try {
+    if (client) await client.close();
+  } finally {
+    client = null;
+    db = null;
+  }
 }
 
 function collections() {
