@@ -12,6 +12,16 @@ async function accountBelongsToUser(accountId, userId) {
   return !!(await accounts.findOne({ _id: accountId, userId }, { projection: { _id: 1 } }));
 }
 
+// Kept identical to transactions.js's helper of the same name: a regex like
+// /^\d{4}-\d{2}-\d{2}$/ matches "2026-02-31", which is not a real calendar
+// date. Round-trip through Date.UTC and confirm the year/month/day survive.
+function isValidCalendarDate(str) {
+  if (typeof str !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(str)) return false;
+  const [y, m, d] = str.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
 router.get("/account/:accountId", asyncHandler(async (req, res) => {
   if (!(await accountBelongsToUser(req.params.accountId, req.userId))) {
     return res.status(404).json({ error: "Account not found." });
@@ -26,7 +36,16 @@ router.post("/", asyncHandler(async (req, res) => {
   if (!(await accountBelongsToUser(accountId, req.userId))) {
     return res.status(404).json({ error: "Account not found." });
   }
-  const doc = { _id: uuid(), accountId, date, balance: Number(balance) };
+  // Without this, a missing or non-numeric balance coerces to NaN,
+  // JSON.stringify({balance: NaN}) serialises as `null`, and the client
+  // sees 200 OK while a NaN is written to Mongo -- poisoning every future
+  // sum/sort over this ledger. Mirrors the finite+positive check /bulk
+  // uses in transactions.js.
+  if (!isValidCalendarDate(date)) return res.status(400).json({ error: `Invalid date: ${date}` });
+  const numBalance = Number(balance);
+  if (!Number.isFinite(numBalance) || numBalance <= 0) return res.status(400).json({ error: `Invalid balance: ${balance}` });
+
+  const doc = { _id: uuid(), accountId, date, balance: numBalance };
   const { balanceLogs } = collections();
   await balanceLogs.insertOne(doc);
   res.json({ id: doc._id, accountId, date, balance: doc.balance });

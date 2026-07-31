@@ -12,6 +12,17 @@ async function accountBelongsToUser(accountId, userId) {
   return !!(await accounts.findOne({ _id: accountId, userId }, { projection: { _id: 1 } }));
 }
 
+// A regex like /^\d{4}-\d{2}-\d{2}$/ matches "2026-02-31" or "2026-13-45" --
+// well-formed but not real calendar dates. Round-trip through Date.UTC and
+// confirm the year/month/day survive, so an impossible date is rejected
+// instead of stored verbatim. UTC avoids the local timezone shifting the day.
+function isValidCalendarDate(str) {
+  if (typeof str !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(str)) return false;
+  const [y, m, d] = str.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
 function toApi(doc) {
   return {
     id: doc._id, accountId: doc.accountId, date: doc.date,
@@ -33,9 +44,18 @@ router.post("/", asyncHandler(async (req, res) => {
   if (!(await accountBelongsToUser(accountId, req.userId))) {
     return res.status(404).json({ error: "Account not found." });
   }
+  // Mirror /bulk's validation here: without it, a missing or non-numeric
+  // amount coerces to NaN, JSON.stringify({amount: NaN}) serialises as
+  // `null`, and the client sees 200 OK while a NaN is written to Mongo --
+  // poisoning every future sum/sort over this ledger.
+  if (!isValidCalendarDate(date)) return res.status(400).json({ error: `Invalid date: ${date}` });
+  if (type !== "credit" && type !== "debit") return res.status(400).json({ error: `Invalid type: ${type}` });
+  const numAmount = Number(amount);
+  if (!Number.isFinite(numAmount) || numAmount <= 0) return res.status(400).json({ error: `Invalid amount: ${amount}` });
+
   const doc = {
     _id: uuid(), accountId, date, description: description || "",
-    type, amount: Number(amount),
+    type, amount: numAmount,
   };
   const { transactions } = collections();
   await transactions.insertOne(doc);
@@ -57,7 +77,7 @@ router.post("/bulk", asyncHandler(async (req, res) => {
     const date = String((r && r.date) || "");
     const type = String((r && r.type) || "");
     const amount = Number(r && r.amount);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return res.status(400).json({ error: `Invalid date: ${date}` });
+    if (!isValidCalendarDate(date)) return res.status(400).json({ error: `Invalid date: ${date}` });
     if (type !== "credit" && type !== "debit") return res.status(400).json({ error: `Invalid type: ${type}` });
     if (!Number.isFinite(amount) || amount <= 0) return res.status(400).json({ error: `Invalid amount: ${r && r.amount}` });
     docs.push({
@@ -67,7 +87,29 @@ router.post("/bulk", asyncHandler(async (req, res) => {
   }
 
   const { transactions } = collections();
-  await transactions.insertMany(docs, { ordered: true });
+  try {
+    await transactions.insertMany(docs, { ordered: true });
+  } catch (err) {
+    // `ordered: true` stops at the first failing document, but every
+    // document before that point is already durably written to Mongo --
+    // the insertMany call rejecting does NOT mean nothing was saved.
+    // MongoBulkWriteError exposes how many actually landed via
+    // `.insertedCount` (a getter over `.result.insertedCount`, verified
+    // against the installed mongodb 6.21.0 driver). Surface that count
+    // instead of letting the generic error handler return a bare 500 with
+    // no count -- a client that blindly retries the whole batch on a
+    // count-less 500 would duplicate every row that already landed.
+    const insertedCount = typeof err.insertedCount === "number" ? err.insertedCount : 0;
+    if (insertedCount > 0) {
+      return res.status(207).json({
+        inserted: insertedCount,
+        error: `Import stopped partway through: ${insertedCount} of ${docs.length} rows were saved before a write error. Do not re-import this file as-is, or you will duplicate those ${insertedCount} rows.`,
+      });
+    }
+    // Nothing was written -- safe to let asyncHandler forward this to the
+    // generic error handler rather than fabricate a success response.
+    throw err;
+  }
   res.json({ inserted: docs.length });
 }));
 
