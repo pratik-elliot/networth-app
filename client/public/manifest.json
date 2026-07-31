@@ -1,0 +1,9 @@
+{
+  "name": "Net Worth Ledger",
+  "short_name": "NetWorth",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#10151F",
+  "theme_color": "#10151F",
+  "icons": []
+}

@@ -1,0 +1,1 @@
+See public/manifest.json (created separately) for the PWA "add to home screen" config.

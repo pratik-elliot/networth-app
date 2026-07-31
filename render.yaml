@@ -1,0 +1,44 @@
+services:
+  - type: web
+    name: networth-app
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: cd client && npm install && npm run build && cd ../server && npm install
+    startCommand: node server/src/index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PORT
+        value: 4000
+      # SQLite DB and uploaded images live on local disk. On the free plan
+      # there is no persistent disk attached, so this data is wiped on every
+      # redeploy and on every spin-down/spin-up after idle. Upgrade to a paid
+      # plan + attach a disk (mounted e.g. at /var/data) for real persistence,
+      # then point DB_PATH and UPLOAD_DIR at that mount.
+      - key: DB_PATH
+        value: ./data/networth.db
+      - key: UPLOAD_DIR
+        value: ./uploads
+      # Same-origin deployment (client is served by this same service), so
+      # CORS isn't actually exercised, but the app still needs a value.
+      - key: CLIENT_ORIGIN
+        value: "*"
+      # Fill these in from the Render dashboard (Environment tab) so OTP
+      # login codes get emailed instead of just printed to the service logs.
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: 587
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: OTP_TTL_MINUTES
+        value: 10

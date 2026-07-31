@@ -1,0 +1,7 @@
+@tailwind base;
+@tailwind utilities;
+
+html, body, #root { height: 100%; }
+body { margin: 0; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #2E3A52; border-radius: 4px; }
