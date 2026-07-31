@@ -1,27 +1,32 @@
 const express = require("express");
-const db = require("../db");
+const { collections } = require("../db");
+const asyncHandler = require("../utils/asyncHandler");
 const { requireAuth } = require("../middleware/auth");
 
 const router = express.Router();
 router.use(requireAuth);
 
 /* Full, unrestricted export of everything belonging to the logged-in user. */
-router.get("/", (req, res) => {
-  const accounts = db.prepare("SELECT * FROM accounts WHERE user_id = ?").all(req.userId);
-  const accountIds = accounts.map(a => a.id);
-  const placeholders = accountIds.map(() => "?").join(",") || "''";
+router.get("/", asyncHandler(async (req, res) => {
+  const { accounts, transactions, balanceLogs } = collections();
 
-  const nominees = accountIds.length
-    ? db.prepare(`SELECT * FROM nominees WHERE account_id IN (${placeholders})`).all(...accountIds) : [];
-  const transactions = accountIds.length
-    ? db.prepare(`SELECT * FROM transactions WHERE account_id IN (${placeholders}) ORDER BY date DESC`).all(...accountIds) : [];
-  const balanceLogs = accountIds.length
-    ? db.prepare(`SELECT * FROM balance_logs WHERE account_id IN (${placeholders}) ORDER BY date DESC`).all(...accountIds) : [];
+  const accountDocs = await accounts.find({ userId: req.userId }).toArray();
+  const accountIds = accountDocs.map(a => a._id);
 
+  const [txDocs, balDocs] = await Promise.all([
+    accountIds.length ? transactions.find({ accountId: { $in: accountIds } }).sort({ date: -1 }).toArray() : [],
+    accountIds.length ? balanceLogs.find({ accountId: { $in: accountIds } }).sort({ date: -1 }).toArray() : [],
+  ]);
+
+  // File bytes are excluded deliberately: the export stays a readable JSON
+  // document rather than tens of megabytes of base64.
   res.json({
     exportedAt: new Date().toISOString(),
-    accounts, nominees, transactions, balanceLogs,
+    accounts: accountDocs,
+    nominees: accountDocs.flatMap(a => (a.nominees || []).map(n => ({ ...n, accountId: a._id }))),
+    transactions: txDocs,
+    balanceLogs: balDocs,
   });
-});
+}));
 
 module.exports = router;

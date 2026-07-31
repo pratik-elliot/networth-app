@@ -6,7 +6,7 @@ nominees, KYC dates, dashboards, and reports — with a real backend and databas
 two-step login, and unrestricted data export.
 
 This is a two-part project:
-- **`server/`** — Node.js + Express API with a SQLite database (all your data lives here).
+- **`server/`** — Node.js + Express API backed by MongoDB Atlas (all your data lives here).
 - **`client/`** — React (Vite) frontend that talks to the API.
 
 Nothing here is deployed yet — you'll run/deploy both parts yourself using the steps below.
@@ -22,13 +22,14 @@ You'll need [Node.js](https://nodejs.org) 18+ installed.
 ### Backend
 ```bash
 cd server
-cp .env.example .env      # then open .env and set JWT_SECRET to any long random string
+cp .env.example .env      # set MONGODB_URI and JWT_SECRET
 npm install
 npm run dev
 ```
-The API now runs at `http://localhost:4000`. Since SMTP isn't configured yet, login
-verification codes will be **printed to this terminal window** instead of emailed —
-that's expected for local testing.
+The API runs at `http://localhost:4000`. There is no native dependency to
+compile, so this works on Windows, macOS and Linux alike. Since SMTP isn't
+configured yet, login verification codes will be **printed to this terminal
+window** instead of emailed — that's expected for local testing.
 
 ### Frontend
 In a second terminal:
@@ -76,12 +77,10 @@ and answers `/api/*` requests itself, so there's only one URL and no CORS to con
 4. Deploy. You'll get a single URL, e.g. `https://networth-app.onrender.com` — that's both
    your frontend and your API.
 
-**Free plan caveat:** `render.yaml` defaults to Render's free instance type, which has no
-persistent disk attached. That means the SQLite database and any uploaded images are wiped
-every time the service redeploys or wakes up from idle sleep (free instances sleep after ~15
-min of inactivity). That's fine for trying it out, but for data you actually want to keep,
-upgrade the service to a paid plan, attach a disk (e.g. mounted at `/var/data`), and point the
-`DB_PATH` and `UPLOAD_DIR` environment variables at that mount.
+**Data persistence:** all data — accounts, transactions, balance logs and uploaded
+files — lives in MongoDB Atlas, not on Render's disk, so it survives redeploys and
+idle spin-down. Render's free plan needs no disk attached. Note Atlas' free tier
+allows 512MB in total, which is why attachments are capped at 8MB each.
 
 ### Install it on your phone like an app
 Once deployed, open the frontend URL in Safari (iOS) or Chrome (Android) and choose
@@ -94,7 +93,7 @@ This is a Progressive Web App (PWA); a basic manifest is already included in
 ## 4. What's simulated vs. real here
 
 - **Login security**: email + password against a real database, with bcrypt-hashed passwords and IP-based rate limiting (15 failed sign-in attempts per 15 minutes; successful logins aren't counted). The emailed one-time code is currently **disabled** — `utils/mailer.js` and the `otp_codes` table are still in place, so two-step login can be restored by reinstating the OTP issue/verify routes in `routes/auth.js`. Until then your password is the only credential, so make it a strong, unique one.
-- **Data storage**: real — a SQLite database on your server, shared across every device you log in from.
+- **Data storage**: real — a MongoDB Atlas database, shared across every device you log in from.
 - **Full history export, no record limits**: real — Reports → Download Full Data pulls everything, unpaginated.
 - **File attachments**: real — each account accepts images, PDF, CSV, Excel (.xls/.xlsx), Word (.doc/.docx) and .txt files, up to 25MB each and 10 at a time. Images render as thumbnails; documents show as a labelled tile you can click to open or download. Note these are *stored as attachments* — uploading a CSV/XLSX statement does not yet parse it into transactions.
 - **Automatic value lookups** (gold/property/vehicle pricing from public sources): **not automated** — no backend service here calls external pricing APIs. The "Update Value" flow asks you to paste in the figure, date, and source URL after you look it up, fully editable later. Wiring up a real price-lookup service (e.g. a gold-price API, a VIN-decoding + valuation API) is a natural next step once this is live — happy to add it.
@@ -108,7 +107,7 @@ networth-app/
   server/            Express API
     src/
       index.js        entry point
-      db.js            SQLite schema
+      db.js            MongoDB connection + collection accessors
       routes/          auth, accounts, transactions, balances, images, export
       middleware/auth.js
       utils/mailer.js  OTP email sending

@@ -15,19 +15,12 @@ services:
         generateValue: true
       - key: PORT
         value: 4000
-      # Paths are relative to the process CWD, which on Render is the repo
-      # root, so these keep the DB and uploads under server/ as the local
-      # defaults and .gitignore expect.
-      #
-      # On the free plan there is no persistent disk attached, so this data is
-      # wiped on every redeploy and on every spin-down/spin-up after idle.
-      # Upgrade to a paid plan + attach a disk (mounted e.g. at /var/data) for
-      # real persistence, then set these to /var/data/networth.db and
-      # /var/data/uploads.
-      - key: DB_PATH
-        value: ./server/data/networth.db
-      - key: UPLOAD_DIR
-        value: ./server/uploads
+      # All data lives in MongoDB Atlas, so nothing depends on Render's
+      # ephemeral disk any more. Set the URI in the dashboard.
+      - key: MONGODB_URI
+        sync: false
+      - key: MONGODB_DB
+        value: networth
       # Same-origin deployment (client is served by this same service), so
       # CORS isn't actually exercised, but the app still needs a value.
       - key: CLIENT_ORIGIN
