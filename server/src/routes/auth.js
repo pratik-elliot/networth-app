@@ -28,14 +28,27 @@ router.post("/register", authLimiter, asyncHandler(async (req, res) => {
 
   const id = uuid();
   const passwordHash = await bcrypt.hash(password, 10);
-  await users.insertOne({
-    _id: id,
-    email: lower,
-    phone: phone || null,
-    passwordHash,
-    fxRate: 83,
-    createdAt: new Date().toISOString(),
-  });
+  try {
+    await users.insertOne({
+      _id: id,
+      email: lower,
+      phone: phone || null,
+      passwordHash,
+      fxRate: 83,
+      createdAt: new Date().toISOString(),
+    });
+  } catch (err) {
+    // The findOne check above handles the common case, but two concurrent
+    // registrations for the same email can both pass it before either insert
+    // runs. The unique index on users.email (see db.js) then rejects the
+    // losing insert with a duplicate-key error (code 11000) -- surface that
+    // as the same 409 the pre-check returns, instead of letting it fall
+    // through to the generic 500 error handler. Anything else still propagates.
+    if (err && err.code === 11000) {
+      return res.status(409).json({ error: "An account with this email already exists." });
+    }
+    throw err;
+  }
 
   const token = jwt.sign({ sub: id }, process.env.JWT_SECRET, { expiresIn: "7d" });
   res.json({ token, user: { id, email: lower, phone } });
