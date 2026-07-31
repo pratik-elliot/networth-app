@@ -23,7 +23,10 @@ function serializeAccount(row) {
     city: row.city, vin: row.vin, make: row.make, model: row.model, year: row.year,
     address: row.address,
     nominees: nominees.map(n => ({ id: n.id, name: n.name, relation: n.relation, percent: n.percent })),
-    images: images.map(i => ({ id: i.id, filename: i.filename, url: i.url_path })),
+    images: images.map(i => ({
+      id: i.id, filename: i.filename, url: i.url_path,
+      mimeType: i.mime_type || null, sizeBytes: i.size_bytes || null,
+    })),
   };
 }
 

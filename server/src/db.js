@@ -91,4 +91,13 @@ CREATE TABLE IF NOT EXISTS account_images (
 );
 `);
 
+// Added when attachments grew beyond images to PDFs/spreadsheets; databases
+// created before that need the columns backfilled.
+function addColumnIfMissing(table, column, definition) {
+  const exists = db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === column);
+  if (!exists) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
+addColumnIfMissing("account_images", "mime_type", "TEXT");
+addColumnIfMissing("account_images", "size_bytes", "INTEGER");
+
 module.exports = db;

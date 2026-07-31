@@ -96,6 +96,7 @@ This is a Progressive Web App (PWA); a basic manifest is already included in
 - **Login security**: real — password + a genuinely emailed one-time code, backed by a real database, not a local-only passcode.
 - **Data storage**: real — a SQLite database on your server, shared across every device you log in from.
 - **Full history export, no record limits**: real — Reports → Download Full Data pulls everything, unpaginated.
+- **File attachments**: real — each account accepts images, PDF, CSV, Excel (.xls/.xlsx), Word (.doc/.docx) and .txt files, up to 25MB each and 10 at a time. Images render as thumbnails; documents show as a labelled tile you can click to open or download. Note these are *stored as attachments* — uploading a CSV/XLSX statement does not yet parse it into transactions.
 - **Automatic value lookups** (gold/property/vehicle pricing from public sources): **not automated** — no backend service here calls external pricing APIs. The "Update Value" flow asks you to paste in the figure, date, and source URL after you look it up, fully editable later. Wiring up a real price-lookup service (e.g. a gold-price API, a VIN-decoding + valuation API) is a natural next step once this is live — happy to add it.
 - **Google Drive / Dropbox sync**: **not included**. Your database *is* the persistent store now, which is more reliable than syncing files. If you specifically want a copy mirrored to Drive/Dropbox, that needs OAuth app credentials from Google/Dropbox — let me know if you want that added later.
 

@@ -5,3 +5,9 @@ server/uploads/*
 server/.env
 client/dist/
 .DS_Store
+
+# Guard against DB_PATH/UPLOAD_DIR resolving to the repo root — uploaded
+# statements and account documents must never be committed.
+/data/
+/uploads/
+.env

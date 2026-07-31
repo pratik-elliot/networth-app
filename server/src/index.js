@@ -4,6 +4,7 @@ const cors = require("cors");
 const path = require("path");
 const fs = require("fs");
 
+const { uploadDir } = require("./paths");
 const authRoutes = require("./routes/auth");
 const accountRoutes = require("./routes/accounts");
 const transactionRoutes = require("./routes/transactions");
@@ -14,7 +15,7 @@ const exportRoutes = require("./routes/exportData");
 const app = express();
 app.use(cors({ origin: process.env.CLIENT_ORIGIN || "*" }));
 app.use(express.json({ limit: "2mb" }));
-app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));
+app.use("/uploads", express.static(uploadDir));
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 

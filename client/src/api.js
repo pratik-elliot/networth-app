@@ -38,12 +38,12 @@ export const api = {
   createBalance: (b) => fetch(`${BASE}/api/balances`, { method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() }, body: JSON.stringify(b) }).then(handle),
   deleteBalance: (id) => fetch(`${BASE}/api/balances/${id}`, { method: "DELETE", headers: authHeaders() }).then(handle),
 
-  uploadImages: (accountId, files) => {
+  uploadFiles: (accountId, files) => {
     const fd = new FormData();
     Array.from(files).forEach(f => fd.append("images", f));
     return fetch(`${BASE}/api/images/account/${accountId}`, { method: "POST", headers: authHeaders(), body: fd }).then(handle);
   },
-  deleteImage: (id) => fetch(`${BASE}/api/images/${id}`, { method: "DELETE", headers: authHeaders() }).then(handle),
+  deleteFile: (id) => fetch(`${BASE}/api/images/${id}`, { method: "DELETE", headers: authHeaders() }).then(handle),
 
   exportAll: () => fetch(`${BASE}/api/export`, { headers: authHeaders() }).then(handle),
 };

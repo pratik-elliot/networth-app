@@ -1,8 +1,28 @@
 import React, { useRef, useState } from "react";
-import { ArrowLeft, Pencil, Plus, RefreshCw, Download, Users, Upload, Trash2 } from "lucide-react";
+import { ArrowLeft, Pencil, Plus, RefreshCw, Download, Users, Upload, Trash2, FileText } from "lucide-react";
 import { C, SERIF, MONO, typeInfo, fmt, latestValue, isStale, lastActivityDate, PHYSICAL_TYPES } from "../theme";
 import { Btn, StaleBadge, EmptyNote } from "../components/ui";
 import { api } from "../api";
+
+const IMAGE_EXTENSIONS = ["jpg", "jpeg", "png", "gif", "webp", "heic", "heif"];
+
+function fileExtension(att) {
+  const source = att.filename || att.url || "";
+  const ext = source.split("?")[0].split(".").pop();
+  return ext && ext !== source ? ext.toLowerCase() : "";
+}
+
+function isImage(att) {
+  if (att.mimeType) return att.mimeType.startsWith("image/");
+  return IMAGE_EXTENSIONS.includes(fileExtension(att));
+}
+
+function formatSize(bytes) {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 export default function AccountDetail({
   account, txByAccount, balByAccount, onBack, onAddTxn, onAddBalance, onUpdateValue, onEdit,
@@ -15,6 +35,7 @@ export default function AccountDetail({
   const val = latestValue(account, balByAccount);
   const fileRef = useRef(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
 
   const exportCsv = () => {
     let rows = [];
@@ -37,13 +58,23 @@ export default function AccountDetail({
     const files = e.target.files;
     if (!files || !files.length) return;
     setUploading(true);
-    try { await api.uploadImages(account.id, files); await onImagesChanged(); }
-    finally { setUploading(false); if (fileRef.current) fileRef.current.value = ""; }
+    setUploadError("");
+    try {
+      await api.uploadFiles(account.id, files);
+      await onImagesChanged();
+    } catch (err) {
+      // Previously this had no catch, so failed uploads vanished silently.
+      setUploadError(err.message || "Upload failed.");
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
   };
 
-  const removeImage = async (id) => {
-    await api.deleteImage(id);
-    await onImagesChanged();
+  const removeFile = async (id) => {
+    setUploadError("");
+    try { await api.deleteFile(id); await onImagesChanged(); }
+    catch (err) { setUploadError(err.message || "Could not remove that file."); }
   };
 
   return (
@@ -94,20 +125,47 @@ export default function AccountDetail({
 
         <div className="mt-4" style={{ borderTop: `1px solid ${C.hair}`, paddingTop: 10 }}>
           <div className="flex items-center justify-between mb-2">
-            <div style={{ color: C.ivoryDim, fontSize: 12 }}>Images (locker contents, vehicle photos, certificates)</div>
+            <div style={{ color: C.ivoryDim, fontSize: 12 }}>Files (statements, valuations, certificates, photos)</div>
             <label style={{ color: C.gold, fontSize: 12, cursor: "pointer" }} className="inline-flex items-center gap-1">
               <Upload size={13} />{uploading ? "Uploading…" : "Upload"}
-              <input ref={fileRef} type="file" accept="image/*" multiple onChange={handleUpload} style={{ display: "none" }} />
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*,.pdf,.csv,.xls,.xlsx,.doc,.docx,.txt"
+                multiple
+                onChange={handleUpload}
+                style={{ display: "none" }}
+              />
             </label>
           </div>
+          {uploadError && (
+            <div style={{ color: C.crimson, fontSize: 12, marginBottom: 8 }}>{uploadError}</div>
+          )}
           <div className="flex gap-2 flex-wrap">
-            {(account.images || []).map(img => (
-              <div key={img.id} style={{ position: "relative" }}>
-                <img src={img.url} alt={img.filename} style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 6, border: `1px solid ${C.hair}` }} />
-                <button onClick={() => removeImage(img.id)} style={{ position: "absolute", top: -6, right: -6, background: C.crimson, borderRadius: "50%", width: 16, height: 16, color: "#fff", fontSize: 10, lineHeight: "16px" }}>×</button>
+            {(account.images || []).map(att => (
+              <div key={att.id} style={{ position: "relative" }}>
+                <a href={att.url} target="_blank" rel="noreferrer" download={att.filename} title={`${att.filename}${formatSize(att.sizeBytes) ? ` · ${formatSize(att.sizeBytes)}` : ""}`}>
+                  {isImage(att) ? (
+                    <img src={att.url} alt={att.filename} style={{ width: 64, height: 64, objectFit: "cover", borderRadius: 6, border: `1px solid ${C.hair}` }} />
+                  ) : (
+                    <div
+                      className="flex flex-col items-center justify-center"
+                      style={{ width: 64, height: 64, borderRadius: 6, border: `1px solid ${C.hair}`, background: C.panelHi, padding: 4 }}
+                    >
+                      <FileText size={20} style={{ color: C.teal }} />
+                      <div style={{ fontFamily: MONO, fontSize: 9, color: C.gold, marginTop: 2, textTransform: "uppercase" }}>
+                        {fileExtension(att) || "file"}
+                      </div>
+                      <div style={{ fontSize: 8, color: C.ivoryDim, maxWidth: 56, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {att.filename}
+                      </div>
+                    </div>
+                  )}
+                </a>
+                <button onClick={() => removeFile(att.id)} style={{ position: "absolute", top: -6, right: -6, background: C.crimson, borderRadius: "50%", width: 16, height: 16, color: "#fff", fontSize: 10, lineHeight: "16px" }}>×</button>
               </div>
             ))}
-            {(!account.images || account.images.length === 0) && <div style={{ color: C.ivoryDim, fontSize: 12 }}>No images yet.</div>}
+            {(!account.images || account.images.length === 0) && <div style={{ color: C.ivoryDim, fontSize: 12 }}>No files yet.</div>}
           </div>
         </div>
 
