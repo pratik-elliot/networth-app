@@ -8,8 +8,18 @@ function authHeaders() {
 async function handle(res) {
   if (!res.ok) {
     let msg = "Request failed.";
-    try { const d = await res.json(); msg = d.error || msg; } catch (e) {}
-    throw new Error(msg);
+    let code;
+    try {
+      const d = await res.json();
+      msg = d.error || msg;
+      code = d.code;
+    } catch (e) {}
+    const err = new Error(msg);
+    // Callers branch on this — e.g. the statement importer prompts for a
+    // password when the server reports PASSWORD_REQUIRED.
+    if (code) err.code = code;
+    err.status = res.status;
+    throw err;
   }
   return res.json();
 }
@@ -50,8 +60,11 @@ export const api = {
   },
 
   statementStatus: () => fetch(`${BASE}/api/statements/status`, { headers: authHeaders() }).then(handle),
-  parseStatement: (accountId, file) => {
+  parseStatement: (accountId, file, password) => {
     const fd = new FormData();
+    // The password part is appended BEFORE the file so multer has it parsed
+    // by the time the handler runs.
+    if (password) fd.append("password", password);
     fd.append("statement", file);
     return fetch(`${BASE}/api/statements/parse/${accountId}`, { method: "POST", headers: authHeaders(), body: fd }).then(handle);
   },

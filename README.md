@@ -94,7 +94,11 @@ This is a Progressive Web App (PWA); a basic manifest is already included in
 - **File attachments**: real — each account accepts images, PDF, CSV, Excel (.xls/.xlsx), Word (.doc/.docx) and .txt files, up to 8MB each and 10 at a time (Atlas' free tier allows 512MB in total, hence the smaller per-file cap than the old disk-based limit). Images render as thumbnails; documents show as a labelled tile you can click to open or download. Note these are *stored as attachments* — to turn a statement into transactions, use Import statement instead (below).
 - **Statement import**: real — upload a PDF, CSV or Excel bank statement to an account and its
   rows are extracted into transactions. Text-layer PDFs only; a scanned statement is detected and
-  reported rather than guessed at. Extraction uses a model on OpenRouter, and every request demands
+  reported rather than guessed at.
+  Password-protected PDFs are supported — you are prompted for the password only when one is
+  needed, and it is used once to open the file and then discarded. It is never logged, never
+  stored, and never sent to the extraction service. Encrypted Excel files are not supported.
+  Extraction uses a model on OpenRouter, and every request demands
   a zero-data-retention provider, failing rather than sending your statement to one that would
   retain it. Nothing is saved until you review an editable table and confirm; rows matching
   existing transactions are flagged and unticked so re-importing an overlapping statement cannot

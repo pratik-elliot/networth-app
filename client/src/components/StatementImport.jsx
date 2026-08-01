@@ -22,6 +22,10 @@ export default function StatementImport({ accountId, onImported }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [result, setResult] = useState(null);
+  // Held so the user does not have to re-pick the file after being asked
+  // for a password. Cleared as soon as the import succeeds or is cancelled.
+  const [lockedFile, setLockedFile] = useState(null);
+  const [password, setPassword] = useState("");
 
   useEffect(() => {
     let live = true;
@@ -31,12 +35,12 @@ export default function StatementImport({ accountId, onImported }) {
     return () => { live = false; };
   }, []);
 
-  const choose = async (e) => {
-    const file = e.target.files && e.target.files[0];
-    if (!file) return;
+  const runParse = async (file, pw) => {
     setBusy(true); setError(""); setNotice(""); setResult(null);
     try {
-      const res = await api.parseStatement(accountId, file);
+      const res = await api.parseStatement(accountId, file, pw);
+      setLockedFile(null);
+      setPassword("");
       if (!res.rows.length) {
         // Distinguish "nothing there" from "everything failed to parse" —
         // otherwise a statement whose every row was rejected looks empty.
@@ -48,11 +52,21 @@ export default function StatementImport({ accountId, onImported }) {
       // cannot silently double-count.
       setResult({ ...res, rows: res.rows.map(r => ({ ...r, include: !r.duplicate })) });
     } catch (err) {
+      if (err.code === "PASSWORD_REQUIRED" || err.code === "PASSWORD_INCORRECT") {
+        setLockedFile(file);
+        setPassword("");
+      }
       setError(err.message);
     } finally {
       setBusy(false);
       if (fileRef.current) fileRef.current.value = "";
     }
+  };
+
+  const choose = async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    await runParse(file, undefined);
   };
 
   const update = (i, patch) =>
@@ -105,6 +119,26 @@ export default function StatementImport({ accountId, onImported }) {
 
       {error && <div style={{ color: C.crimson, fontSize: 12, marginBottom: 8 }}>{error}</div>}
       {notice && !error && <div style={{ color: C.teal, fontSize: 12, marginBottom: 8 }}>{notice}</div>}
+
+      {lockedFile && (
+        <form
+          className="flex gap-2 items-center flex-wrap"
+          style={{ marginBottom: 8 }}
+          onSubmit={(e) => { e.preventDefault(); if (password) runParse(lockedFile, password); }}
+        >
+          <input
+            type="password"
+            value={password}
+            autoComplete="off"
+            placeholder={`Password for ${lockedFile.name}`}
+            onChange={(e) => setPassword(e.target.value)}
+            style={{ ...FIELD, width: "auto", flex: "1 1 200px" }}
+            aria-label="Statement password"
+          />
+          <Btn type="submit" disabled={busy || !password}>{busy ? "Unlocking…" : "Unlock"}</Btn>
+          <Btn variant="ghost" onClick={() => { setLockedFile(null); setPassword(""); setError(""); }}>Cancel</Btn>
+        </form>
+      )}
 
       {result && result.rows.length > 0 && (
         <div>
@@ -188,7 +222,7 @@ export default function StatementImport({ accountId, onImported }) {
             <Btn onClick={confirm} disabled={busy || selected === 0}>
               {busy ? "Importing…" : `Import ${selected} transaction${selected === 1 ? "" : "s"}`}
             </Btn>
-            <Btn variant="ghost" onClick={() => { setResult(null); setError(""); }}>Cancel</Btn>
+            <Btn variant="ghost" onClick={() => { setResult(null); setError(""); setLockedFile(null); setPassword(""); }}>Cancel</Btn>
           </div>
         </div>
       )}
