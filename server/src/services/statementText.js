@@ -44,6 +44,14 @@ async function extractPdf(buffer, opts) {
       throw codedError("PASSWORD_REQUIRED", "This PDF is password-protected. Enter its password to import it.");
     }
     if (/encrypt/i.test(message)) {
+      // pdf.js throws a plain (non-PasswordException) error for some
+      // encryption schemes it cannot handle at all, even with the right
+      // password (e.g. certain AES-256 R6 or custom-filter PDFs). If a
+      // password was already supplied, blaming "no password" would send the
+      // user into an endless re-prompt loop for a file that can never open.
+      if (opts.password) {
+        throw codedError("PASSWORD_INCORRECT", "This PDF's encryption could not be opened with that password.");
+      }
       throw codedError("PASSWORD_REQUIRED", "This PDF is encrypted. Enter its password to import it.");
     }
     throw new Error("This PDF could not be read. It may be corrupted or in an unsupported format.");

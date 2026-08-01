@@ -184,8 +184,10 @@ test("parse reports an extraction failure as 502 with the reason", async (t) => 
 });
 
 /* Builds a multipart body with a password text part BEFORE the file part.
-   Order matters: multer streams parts in order, so a field placed after the
-   file is not reliably present when the handler runs. */
+   Order does not actually matter here: multer populates req.body from each
+   field part as busboy emits it and only resolves once the stream finishes,
+   so the password is present by the time the handler runs either way. This
+   helper just keeps a fixed, readable part order for the fixtures below. */
 function uploadFormWithPassword(content, filename, password) {
   const boundary = "----testboundarypw";
   const parts = [];

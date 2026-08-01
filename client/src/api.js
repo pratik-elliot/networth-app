@@ -1,11 +1,14 @@
-const BASE = import.meta.env.VITE_API_URL || ""; // "" = same origin, proxied in dev
+// Guarded because Vite always provides import.meta.env, but plain `node --test`
+// (used for the framework-free unit tests) does not -- without the guard,
+// merely importing this module outside Vite would throw before any test ran.
+const BASE = (import.meta.env && import.meta.env.VITE_API_URL) || ""; // "" = same origin, proxied in dev
 
 function authHeaders() {
   const token = localStorage.getItem("nwl_token");
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-async function handle(res) {
+export async function handle(res) {
   if (!res.ok) {
     let msg = "Request failed.";
     let code;
@@ -62,8 +65,10 @@ export const api = {
   statementStatus: () => fetch(`${BASE}/api/statements/status`, { headers: authHeaders() }).then(handle),
   parseStatement: (accountId, file, password) => {
     const fd = new FormData();
-    // The password part is appended BEFORE the file so multer has it parsed
-    // by the time the handler runs.
+    // Ordering of the parts doesn't matter: multer populates req.body from
+    // each field part as busboy emits it and only resolves once the whole
+    // stream finishes, so the password is present by the time the handler
+    // runs regardless of whether it's appended before or after the file.
     if (password) fd.append("password", password);
     fd.append("statement", file);
     return fetch(`${BASE}/api/statements/parse/${accountId}`, { method: "POST", headers: authHeaders(), body: fd }).then(handle);

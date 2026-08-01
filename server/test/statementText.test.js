@@ -180,6 +180,52 @@ test("extractText omits the password key entirely when none is given", async () 
   assert.strictEqual("password" in seen[0], false);
 });
 
+/* A fake standing in for a PDF that pdf.js/pdf-parse can't decrypt at all --
+   e.g. some AES-256 R6 or custom-filter files. It throws a plain error (not
+   a PasswordException) whose message merely mentions "encrypt", regardless
+   of whether a password was supplied. */
+function fakeUnsupportedEncryptionParser() {
+  return class {
+    constructor(opts) { this.opts = opts; }
+    async getText() {
+      const e = new Error("Unknown encryption method");
+      // Deliberately NOT named PasswordException -- this is the case pdf.js
+      // raises for encryption it cannot handle regardless of credentials.
+      throw e;
+    }
+    async destroy() {}
+  };
+}
+
+test("extractText reports unsupported encryption with no password as PASSWORD_REQUIRED", async () => {
+  await assert.rejects(
+    () => extractText(Buffer.from("%PDF-1.4 fake"), "s.pdf", { pdfParseImpl: fakeUnsupportedEncryptionParser() }),
+    (err) => {
+      assert.strictEqual(err.code, "PASSWORD_REQUIRED");
+      assert.match(err.message, /encrypt/i);
+      return true;
+    }
+  );
+});
+
+test("extractText reports unsupported encryption with a password already supplied as PASSWORD_INCORRECT, not PASSWORD_REQUIRED", async () => {
+  // Regression for finding #1: pdf.js can throw a plain (non-PasswordException)
+  // "encrypt"-mentioning error even when the correct password was given, for
+  // PDFs it can never decrypt. Reporting PASSWORD_REQUIRED here would send the
+  // user into an endless re-prompt loop for a file that can never open.
+  await assert.rejects(
+    () => extractText(Buffer.from("%PDF-1.4 fake"), "s.pdf", {
+      password: "correct-pw",
+      pdfParseImpl: fakeUnsupportedEncryptionParser(),
+    }),
+    (err) => {
+      assert.strictEqual(err.code, "PASSWORD_INCORRECT");
+      assert.match(err.message, /encrypt/i);
+      return true;
+    }
+  );
+});
+
 test("extractText NEVER puts the password in an error message", async () => {
   const secret = "PAN-ABCDE1234F-DOB-01011990";
   const seen = [];

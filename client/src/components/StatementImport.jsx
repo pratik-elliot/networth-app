@@ -55,6 +55,13 @@ export default function StatementImport({ accountId, onImported }) {
       if (err.code === "PASSWORD_REQUIRED" || err.code === "PASSWORD_INCORRECT") {
         setLockedFile(file);
         setPassword("");
+      } else {
+        // Otherwise this isn't a password problem -- e.g. the user swapped in
+        // an unsupported file while a previous file was locked. Clear the
+        // stale prompt so it doesn't keep naming a file that's no longer
+        // relevant to the error being shown.
+        setLockedFile(null);
+        setPassword("");
       }
       setError(err.message);
     } finally {
@@ -121,10 +128,9 @@ export default function StatementImport({ accountId, onImported }) {
       {notice && !error && <div style={{ color: C.teal, fontSize: 12, marginBottom: 8 }}>{notice}</div>}
 
       {lockedFile && (
-        <form
+        <div
           className="flex gap-2 items-center flex-wrap"
           style={{ marginBottom: 8 }}
-          onSubmit={(e) => { e.preventDefault(); if (password) runParse(lockedFile, password); }}
         >
           <input
             type="password"
@@ -132,12 +138,13 @@ export default function StatementImport({ accountId, onImported }) {
             autoComplete="off"
             placeholder={`Password for ${lockedFile.name}`}
             onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter" && password && !busy) { e.preventDefault(); runParse(lockedFile, password); } }}
             style={{ ...FIELD, width: "auto", flex: "1 1 200px" }}
             aria-label="Statement password"
           />
-          <Btn type="submit" disabled={busy || !password}>{busy ? "Unlocking…" : "Unlock"}</Btn>
+          <Btn onClick={() => runParse(lockedFile, password)} disabled={busy || !password}>{busy ? "Unlocking…" : "Unlock"}</Btn>
           <Btn variant="ghost" onClick={() => { setLockedFile(null); setPassword(""); setError(""); }}>Cancel</Btn>
-        </form>
+        </div>
       )}
 
       {result && result.rows.length > 0 && (
