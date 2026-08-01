@@ -1,29 +1,38 @@
-# Overnight work report — 1 Aug 2026
+# Work report — 1 Aug 2026
 
-Everything below is on GitHub. **Nothing is deployed.** Read "What I need from you" first.
+## ✅ DEPLOYED AND VERIFIED IN PRODUCTION
+
+Live at **https://networth-app-dlqv.onrender.com** running commit `3d32e38`.
+
+Production smoke test: **register → login → create account → log transaction →
+upload attachment → import CSV → import XLSX → duplicate detection → export →
+cascade delete**. All passing against the live service and MongoDB Atlas.
+
+### Deployment notes
+The first deploy crash-looped with `SSL alert number 80` — Atlas was refusing TLS
+handshakes because Render's outbound IP was not in the Network Access list. The old
+version kept serving throughout, so there was **no outage**. Adding the IP fixed it.
+
+Because Render's free tier uses **dynamic outbound IPs**, the access list must stay
+`0.0.0.0/0` — pinning a single address will break unpredictably later.
 
 ---
 
-## ⚠️ What I need from you (5 minutes, blocks everything)
+## 🔴 Outstanding: three exposed credentials
 
-**Set `MONGODB_URI` in the Render dashboard before merging.**
+All three were pasted into our chat and should be rotated:
 
-`render.yaml` marks it `sync: false`, which means a Blueprint deploy will *not*
-populate it. `db.js` throws without it and `index.js` calls `process.exit(1)`, so
-**merging to `main` right now would crash-loop your live service.** That is the only
-reason I did not deploy while you slept — your current app is still up and serving.
+| Credential | Where | Note |
+| --- | --- | --- |
+| Gmail App Password | `SMTP_PASS` | **Revoke at myaccount.google.com/apppasswords** — it is a live credential on your work account and the mailer is dead code |
+| OpenRouter API key | `OPENROUTER_API_KEY` | Pasted twice |
+| Atlas DB password | `MONGODB_URI` | `pratikpawarnetworth_db_user` |
 
-1. Render dashboard → your service → Environment
-2. Add `MONGODB_URI` = the `mongodb+srv://…` string from Atlas
-   (not the long non-SRV one in my local `.env` — that is a workaround for this
-   machine's DNS, which refuses SRV lookups)
-3. Add `OPENROUTER_API_KEY` = a **freshly rotated** key
-4. Manual Deploy → confirm it boots
-5. Then merge `feat/mongodb-migration`, then `feat/statement-import`
+## 🗑️ Stale env vars — nothing in the code reads these
 
-**Rotate two credentials — both are in our chat in plaintext:**
-- Atlas password for `pratikpawarnetworth_db_user`
-- The OpenRouter key you pasted
+`DB_PATH` · `UPLOAD_DIR` · `OTP_TTL_MINUTES` · `SMTP_HOST/PORT/USER/PASS/FROM`
+
+Harmless, but worth deleting so nobody assumes they do something.
 
 ---
 
