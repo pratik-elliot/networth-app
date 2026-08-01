@@ -111,3 +111,108 @@ test("extractText reports a corrupt PDF clearly rather than throwing raw", async
     /could not be read|scan|selectable text/i
   );
 });
+
+/* A fake standing in for pdf-parse's PDFParse class. Records what it was
+   constructed with, so the tests can assert the password is forwarded. */
+function fakeParser({ behaviour, seen }) {
+  return class {
+    constructor(opts) { seen.push(opts); this.opts = opts; }
+    async getText() {
+      if (behaviour === "needsPassword" && !this.opts.password) {
+        const e = new Error("No password given");
+        e.name = "PasswordException";
+        throw e;
+      }
+      if (behaviour === "needsPassword" && this.opts.password !== "correct-pw") {
+        const e = new Error("Incorrect Password");
+        e.name = "PasswordException";
+        throw e;
+      }
+      return { text: "Date Description Amount\n13/02/2026 SALARY 50000\n" };
+    }
+    async destroy() {}
+  };
+}
+
+test("extractText reports an encrypted PDF with no password as PASSWORD_REQUIRED", async () => {
+  const seen = [];
+  await assert.rejects(
+    () => extractText(Buffer.from("%PDF-1.4 fake"), "s.pdf", { pdfParseImpl: fakeParser({ behaviour: "needsPassword", seen }) }),
+    (err) => {
+      assert.strictEqual(err.code, "PASSWORD_REQUIRED");
+      assert.match(err.message, /password/i);
+      return true;
+    }
+  );
+});
+
+test("extractText reports a wrong password as PASSWORD_INCORRECT", async () => {
+  const seen = [];
+  await assert.rejects(
+    () => extractText(Buffer.from("%PDF-1.4 fake"), "s.pdf", {
+      password: "wrong-pw",
+      pdfParseImpl: fakeParser({ behaviour: "needsPassword", seen }),
+    }),
+    (err) => {
+      assert.strictEqual(err.code, "PASSWORD_INCORRECT");
+      return true;
+    }
+  );
+});
+
+test("extractText forwards the password to the parser", async () => {
+  const seen = [];
+  const out = await extractText(Buffer.from("%PDF-1.4 fake"), "s.pdf", {
+    password: "correct-pw",
+    pdfParseImpl: fakeParser({ behaviour: "needsPassword", seen }),
+  });
+  assert.strictEqual(seen[0].password, "correct-pw");
+  assert.match(out.text, /SALARY/);
+});
+
+test("extractText omits the password key entirely when none is given", async () => {
+  // Passing password: undefined makes pdf-parse treat it as a supplied empty
+  // credential in some versions; the key should simply be absent.
+  const seen = [];
+  await extractText(Buffer.from("%PDF-1.4 fake"), "s.pdf", {
+    pdfParseImpl: fakeParser({ behaviour: "ok", seen }),
+  });
+  assert.strictEqual("password" in seen[0], false);
+});
+
+test("extractText NEVER puts the password in an error message", async () => {
+  const secret = "PAN-ABCDE1234F-DOB-01011990";
+  const seen = [];
+  await assert.rejects(
+    () => extractText(Buffer.from("%PDF-1.4 fake"), "s.pdf", {
+      password: secret,
+      pdfParseImpl: fakeParser({ behaviour: "needsPassword", seen }),
+    }),
+    (err) => {
+      assert.ok(!String(err.message).includes(secret), "password leaked into the error message");
+      assert.ok(!String(err.stack).includes(secret), "password leaked into the stack");
+      return true;
+    }
+  );
+});
+
+test("extractText still reports a corrupt PDF without a code", async () => {
+  const Broken = class {
+    constructor() {}
+    async getText() { throw new Error("bad xref table"); }
+    async destroy() {}
+  };
+  await assert.rejects(
+    () => extractText(Buffer.from("%PDF-1.4 fake"), "s.pdf", { pdfParseImpl: Broken }),
+    (err) => {
+      assert.strictEqual(err.code, undefined);
+      assert.match(err.message, /could not be read/i);
+      return true;
+    }
+  );
+});
+
+test("extractText ignores a password for CSV and XLSX", async () => {
+  const out = await extractText(Buffer.from("Date,Amount\n2026-02-13,5\n"), "s.csv", { password: "irrelevant" });
+  assert.strictEqual(out.kind, "csv");
+});

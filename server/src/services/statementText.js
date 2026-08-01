@@ -6,19 +6,45 @@ const path = require("path");
 const MIN_PDF_TEXT_LENGTH = 20;
 const PAGE_MARKER = /^--\s*\d+\s+of\s+\d+\s*--$/gm;
 
-async function extractPdf(buffer) {
+/* Errors carrying a code let the route answer with something the UI can act
+   on, instead of a wall of prose it has to pattern-match. */
+function codedError(code, message) {
+  const err = new Error(message);
+  err.code = code;
+  return err;
+}
+
+async function extractPdf(buffer, opts) {
   // pdf-parse v2 exports a class; v1's callable default export is gone.
-  const { PDFParse } = require("pdf-parse");
+  // pdfParseImpl is a test seam — production always uses the real class.
+  const Parser = opts.pdfParseImpl || require("pdf-parse").PDFParse;
+
+  // Only set the key when a password was actually supplied; passing
+  // `password: undefined` is not the same as omitting it.
+  const loadParams = { data: buffer };
+  if (opts.password) loadParams.password = opts.password;
 
   let parser;
   let text;
   try {
-    parser = new PDFParse({ data: buffer });
+    parser = new Parser(loadParams);
     ({ text } = await parser.getText());
   } catch (err) {
+    // NOTE: never interpolate opts.password into any message below. The
+    // password is often derived from the user's PAN or date of birth.
     const message = String((err && err.message) || "");
-    if (/password|encrypt/i.test(message) || (err && err.name === "PasswordException")) {
-      throw new Error("This PDF is password-protected. Remove the password and upload it again.");
+    const isPasswordError = (err && err.name === "PasswordException") || /password/i.test(message);
+
+    if (isPasswordError) {
+      // pdf-parse distinguishes "none supplied" from "wrong one supplied",
+      // which is what lets the UI prompt once and then say "that was wrong".
+      if (opts.password || /incorrect/i.test(message)) {
+        throw codedError("PASSWORD_INCORRECT", "That password did not open this PDF. Please check it and try again.");
+      }
+      throw codedError("PASSWORD_REQUIRED", "This PDF is password-protected. Enter its password to import it.");
+    }
+    if (/encrypt/i.test(message)) {
+      throw codedError("PASSWORD_REQUIRED", "This PDF is encrypted. Enter its password to import it.");
     }
     throw new Error("This PDF could not be read. It may be corrupted or in an unsupported format.");
   } finally {
@@ -78,7 +104,7 @@ async function extractXlsx(buffer) {
   return text;
 }
 
-async function extractText(buffer, filename) {
+async function extractText(buffer, filename, opts = {}) {
   if (!buffer || buffer.length === 0) throw new Error("That file is empty.");
 
   const ext = path.extname(filename || "").toLowerCase();
@@ -88,7 +114,7 @@ async function extractText(buffer, filename) {
     if (!text) throw new Error("That file is empty.");
     return { text, kind: "csv" };
   }
-  if (ext === ".pdf") return { text: await extractPdf(buffer), kind: "pdf" };
+  if (ext === ".pdf") return { text: await extractPdf(buffer, opts), kind: "pdf" };
   if (ext === ".xlsx" || ext === ".xls") return { text: await extractXlsx(buffer), kind: "xlsx" };
 
   throw new Error("Only PDF, CSV or Excel statements can be imported.");
