@@ -3,7 +3,7 @@ const multer = require("multer");
 const { collections } = require("../db");
 const { requireAuth } = require("../middleware/auth");
 const { importLimiter } = require("../middleware/rateLimit");
-const { extractText } = require("../services/statementText");
+const statementText = require("../services/statementText");
 const statementExtract = require("../services/statementExtract");
 const { normalise } = require("../services/normaliseTransactions");
 
@@ -40,9 +40,18 @@ async function handleParse(req, res, uploadErr) {
 
   let text;
   try {
-    ({ text } = await extractText(req.file.buffer, req.file.originalname));
+    // req.body.password comes from a text part in the same multipart request.
+    // It is used once, here, and never logged, stored, or forwarded upstream.
+    const password = typeof req.body?.password === "string" && req.body.password !== ""
+      ? req.body.password
+      : undefined;
+    ({ text } = await statementText.extractText(req.file.buffer, req.file.originalname, { password }));
   } catch (e) {
-    return res.status(400).json({ error: e.message });
+    // e.code is PASSWORD_REQUIRED or PASSWORD_INCORRECT for the encrypted-PDF
+    // cases, so the UI can prompt instead of showing a dead end.
+    const body = { error: e.message };
+    if (e.code) body.code = e.code;
+    return res.status(400).json(body);
   }
 
   let rawRows;

@@ -182,3 +182,150 @@ test("parse reports an extraction failure as 502 with the reason", async (t) => 
     assert.match((await res.json()).error, /zero-data-retention/i);
   });
 });
+
+/* Builds a multipart body with a password text part BEFORE the file part.
+   Order matters: multer streams parts in order, so a field placed after the
+   file is not reliably present when the handler runs. */
+function uploadFormWithPassword(content, filename, password) {
+  const boundary = "----testboundarypw";
+  const parts = [];
+  if (password !== undefined) {
+    parts.push(Buffer.from(
+      `--${boundary}\r\nContent-Disposition: form-data; name="password"\r\n\r\n${password}\r\n`, "utf8"));
+  }
+  parts.push(Buffer.from(
+    `--${boundary}\r\nContent-Disposition: form-data; name="statement"; filename="${filename}"\r\n` +
+    `Content-Type: application/octet-stream\r\n\r\n`, "utf8"));
+  parts.push(Buffer.isBuffer(content) ? content : Buffer.from(content, "utf8"));
+  parts.push(Buffer.from(`\r\n--${boundary}--\r\n`, "utf8"));
+  return { body: Buffer.concat(parts), contentType: `multipart/form-data; boundary=${boundary}` };
+}
+
+test("parse returns PASSWORD_REQUIRED for an encrypted PDF with no password", async (t) => {
+  const accounts = [{ _id: ACCOUNT_ID, userId: USER_ID }];
+  await withServer(t, { accounts }, async (base) => {
+    const textModule = require("../src/services/statementText");
+    const original = textModule.extractText;
+    textModule.extractText = async () => {
+      const e = new Error("This PDF is password-protected. Enter its password to import it.");
+      e.code = "PASSWORD_REQUIRED";
+      throw e;
+    };
+    t.after(() => { textModule.extractText = original; });
+
+    const { body, contentType } = uploadForm("x", "s.pdf");
+    const res = await fetch(`${base}/api/statements/parse/${ACCOUNT_ID}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tokenFor(USER_ID)}`, "Content-Type": contentType },
+      body,
+    });
+    assert.strictEqual(res.status, 400);
+    const json = await res.json();
+    assert.strictEqual(json.code, "PASSWORD_REQUIRED");
+    assert.match(json.error, /password/i);
+  });
+});
+
+test("parse returns PASSWORD_INCORRECT when the supplied password is wrong", async (t) => {
+  const accounts = [{ _id: ACCOUNT_ID, userId: USER_ID }];
+  await withServer(t, { accounts }, async (base) => {
+    const textModule = require("../src/services/statementText");
+    const original = textModule.extractText;
+    textModule.extractText = async () => {
+      const e = new Error("That password did not open this PDF. Please check it and try again.");
+      e.code = "PASSWORD_INCORRECT";
+      throw e;
+    };
+    t.after(() => { textModule.extractText = original; });
+
+    const { body, contentType } = uploadFormWithPassword("x", "s.pdf", "nope");
+    const res = await fetch(`${base}/api/statements/parse/${ACCOUNT_ID}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tokenFor(USER_ID)}`, "Content-Type": contentType },
+      body,
+    });
+    assert.strictEqual(res.status, 400);
+    assert.strictEqual((await res.json()).code, "PASSWORD_INCORRECT");
+  });
+});
+
+test("parse forwards the password from the multipart body to extractText", async (t) => {
+  const accounts = [{ _id: ACCOUNT_ID, userId: USER_ID }];
+  await withServer(t, { accounts, extract: async () => [] }, async (base) => {
+    const textModule = require("../src/services/statementText");
+    const original = textModule.extractText;
+    let seenOpts = null;
+    textModule.extractText = async (buf, name, opts) => {
+      seenOpts = opts;
+      return { text: "Date Amount\n2026-02-13 5\n", kind: "pdf" };
+    };
+    t.after(() => { textModule.extractText = original; });
+
+    const { body, contentType } = uploadFormWithPassword("x", "s.pdf", "my-secret-pw");
+    await fetch(`${base}/api/statements/parse/${ACCOUNT_ID}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tokenFor(USER_ID)}`, "Content-Type": contentType },
+      body,
+    });
+    assert.ok(seenOpts, "extractText was not called");
+    assert.strictEqual(seenOpts.password, "my-secret-pw");
+  });
+});
+
+test("parse NEVER forwards the password to the extraction service", async (t) => {
+  // Structurally the password cannot reach OpenRouter today — extractTransactions
+  // is called with the extracted text only. This pins that so a later refactor
+  // cannot quietly start passing the whole request through.
+  const accounts = [{ _id: ACCOUNT_ID, userId: USER_ID }];
+  const secret = "PAN-QQQQQ1111Q-DOB-15081947";
+  const seenByExtractor = [];
+  const extract = async (...args) => { seenByExtractor.push(JSON.stringify(args)); return []; };
+
+  await withServer(t, { accounts, extract }, async (base) => {
+    const textModule = require("../src/services/statementText");
+    const original = textModule.extractText;
+    textModule.extractText = async () => ({ text: "Date Amount\n2026-02-13 5\n", kind: "pdf" });
+    t.after(() => { textModule.extractText = original; });
+
+    const { body, contentType } = uploadFormWithPassword("x", "s.pdf", secret);
+    await fetch(`${base}/api/statements/parse/${ACCOUNT_ID}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tokenFor(USER_ID)}`, "Content-Type": contentType },
+      body,
+    });
+    assert.ok(seenByExtractor.length > 0, "extractTransactions was never called");
+    assert.ok(!seenByExtractor.join("").includes(secret), "password reached the extraction service");
+  });
+});
+
+test("parse NEVER echoes the password back or logs it", async (t) => {
+  const accounts = [{ _id: ACCOUNT_ID, userId: USER_ID }];
+  const secret = "PAN-ZZZZZ9999Z-DOB-31121999";
+  await withServer(t, { accounts }, async (base) => {
+    const textModule = require("../src/services/statementText");
+    const original = textModule.extractText;
+    textModule.extractText = async () => {
+      const e = new Error("That password did not open this PDF. Please check it and try again.");
+      e.code = "PASSWORD_INCORRECT";
+      throw e;
+    };
+
+    // Capture anything the route writes to the console during the request.
+    const logged = [];
+    const origLog = console.log;
+    const origErr = console.error;
+    console.log = (...a) => logged.push(a.join(" "));
+    console.error = (...a) => logged.push(a.join(" "));
+    t.after(() => { textModule.extractText = original; console.log = origLog; console.error = origErr; });
+
+    const { body, contentType } = uploadFormWithPassword("x", "s.pdf", secret);
+    const res = await fetch(`${base}/api/statements/parse/${ACCOUNT_ID}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tokenFor(USER_ID)}`, "Content-Type": contentType },
+      body,
+    });
+    const raw = await res.text();
+    assert.ok(!raw.includes(secret), "password came back in the response body");
+    assert.ok(!logged.join("\n").includes(secret), "password was written to the console");
+  });
+});
