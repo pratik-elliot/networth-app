@@ -26,6 +26,10 @@ export default function StatementImport({ accountId, onImported }) {
   // for a password. Cleared as soon as the import succeeds or is cancelled.
   const [lockedFile, setLockedFile] = useState(null);
   const [password, setPassword] = useState("");
+  // Split so the user can tell local file reading (instant) from the AI call
+  // (10-30s). One undifferentiated spinner for both looks like a hang.
+  const [stage, setStage] = useState("");
+  const [includeBalance, setIncludeBalance] = useState(true);
 
   useEffect(() => {
     let live = true;
@@ -37,10 +41,15 @@ export default function StatementImport({ accountId, onImported }) {
 
   const runParse = async (file, pw) => {
     setBusy(true); setError(""); setNotice(""); setResult(null);
+    setStage("Reading file…");
+    // The AI call dominates the wall time, so switch the label almost
+    // immediately rather than after the request resolves.
+    const stageTimer = setTimeout(() => setStage("Extracting with AI…"), 400);
     try {
       const res = await api.parseStatement(accountId, file, pw);
       setLockedFile(null);
       setPassword("");
+      setIncludeBalance(!!res.closingBalance);
       if (!res.rows.length) {
         // Distinguish "nothing there" from "everything failed to parse" —
         // otherwise a statement whose every row was rejected looks empty.
@@ -65,6 +74,8 @@ export default function StatementImport({ accountId, onImported }) {
       }
       setError(err.message);
     } finally {
+      clearTimeout(stageTimer);
+      setStage("");
       setBusy(false);
       if (fileRef.current) fileRef.current.value = "";
     }
@@ -88,17 +99,28 @@ export default function StatementImport({ accountId, onImported }) {
       .map(({ date, description, type, amount }) => ({ date, description, type, amount: Number(amount) }));
     if (!chosen.length) { setError("No rows are selected."); return; }
 
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setStage("Saving…");
     try {
       const res = await api.bulkCreateTransactions(accountId, chosen);
+      let balanceNote = "";
+      if (includeBalance && result.closingBalance) {
+        // Logged after the transactions so the anchor reflects them.
+        await api.createBalance({
+          accountId,
+          date: result.closingBalance.date,
+          balance: result.closingBalance.amount,
+        });
+        balanceNote = ` · balance set to ${result.closingBalance.amount}`;
+      }
       setResult(null);
-      setNotice(`Imported ${res.inserted} transaction${res.inserted === 1 ? "" : "s"}.`);
+      setNotice(`Imported ${res.inserted} transaction${res.inserted === 1 ? "" : "s"}${balanceNote}.`);
       await onImported();
     } catch (err) {
       // A partial-import failure reports how many rows actually landed, which
       // the user needs before deciding whether to retry.
       setError(err.message);
     } finally {
+      setStage("");
       setBusy(false);
     }
   };
@@ -112,7 +134,7 @@ export default function StatementImport({ accountId, onImported }) {
       <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
         <div style={{ color: C.ivoryDim, fontSize: 12 }}>Import statement (PDF, CSV or Excel)</div>
         <label style={{ color: C.gold, fontSize: 12, cursor: "pointer" }} className="inline-flex items-center gap-1">
-          <FileUp size={13} />{busy ? "Reading…" : "Choose file"}
+          <FileUp size={13} />{busy ? (stage || "Working…") : "Choose file"}
           <input
             ref={fileRef}
             type="file"
@@ -122,6 +144,11 @@ export default function StatementImport({ accountId, onImported }) {
             style={{ display: "none" }}
           />
         </label>
+      </div>
+
+      {/* Placed where the decision is made, not buried in settings. */}
+      <div style={{ color: C.ivoryDim, fontSize: 10.5, marginBottom: 8, lineHeight: 1.4 }}>
+        Read by AI (zero data retention). Always check the rows before importing.
       </div>
 
       {error && <div style={{ color: C.crimson, fontSize: 12, marginBottom: 8 }}>{error}</div>}
@@ -159,6 +186,27 @@ export default function StatementImport({ accountId, onImported }) {
               <button type="button" onClick={() => setAll(false)} style={{ color: C.ivoryDim, fontSize: 12 }}>Clear</button>
             </div>
           </div>
+
+          {result.closingBalance && (
+            <div
+              className="flex items-center gap-2 p-2 flex-wrap"
+              style={{ border: `1px solid ${C.hair}`, borderRadius: 6, marginBottom: 6, background: C.panelHi }}
+            >
+              <input
+                type="checkbox"
+                checked={includeBalance}
+                onChange={e => setIncludeBalance(e.target.checked)}
+                style={{ width: 18, height: 18 }}
+                aria-label="Also set the account balance"
+              />
+              <div style={{ fontSize: 12.5, color: C.ivory, flex: "1 1 180px", minWidth: 0 }}>
+                Set balance to{" "}
+                <b style={{ fontFamily: MONO, color: C.gold }}>{result.closingBalance.amount}</b>{" "}
+                as of {result.closingBalance.date}
+              </div>
+              <div style={{ fontSize: 10.5, color: C.ivoryDim }}>closing balance from the statement</div>
+            </div>
+          )}
 
           <div style={{ maxHeight: 360, overflowY: "auto", border: `1px solid ${C.hair}`, borderRadius: 6 }}>
             {result.rows.map((r, i) => (
@@ -227,7 +275,7 @@ export default function StatementImport({ accountId, onImported }) {
 
           <div className="flex gap-2 mt-3 flex-wrap">
             <Btn onClick={confirm} disabled={busy || selected === 0}>
-              {busy ? "Importing…" : `Import ${selected} transaction${selected === 1 ? "" : "s"}`}
+              {busy ? (stage || "Importing…") : `Import ${selected} transaction${selected === 1 ? "" : "s"}`}
             </Btn>
             <Btn variant="ghost" onClick={() => { setResult(null); setError(""); setLockedFile(null); setPassword(""); }}>Cancel</Btn>
           </div>
