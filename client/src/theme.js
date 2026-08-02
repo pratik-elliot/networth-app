@@ -38,11 +38,31 @@ export function fmt(amount, currency) {
 
 export const PHYSICAL_TYPES = ["gold", "silver", "jewelry", "automobile", "real_estate"];
 
-export function latestValue(account, balanceLogsByAccount) {
+/* An account's value follows the standard anchor model: the most recently
+   logged balance, plus any transactions dated strictly after it. Transactions
+   on or before the anchor are already reflected in it -- a July closing balance
+   already contains every July transaction -- so adding them would double-count.
+
+   Returns null when a non-physical account has no anchor. That is deliberately
+   not 0: zero asserts the account is empty, null says we do not know, and only
+   one of those is true. Callers must handle null before formatting, because
+   fmt() turns null into "0". */
+export function latestValue(account, balanceLogsByAccount, txByAccount) {
   if (PHYSICAL_TYPES.includes(account.type)) return Number(account.currentValue) || 0;
-  const logs = balanceLogsByAccount[account.id] || [];
-  if (!logs.length) return 0;
-  return Number([...logs].sort((a, b) => b.date.localeCompare(a.date))[0].balance);
+
+  const logs = (balanceLogsByAccount || {})[account.id] || [];
+  if (!logs.length) return null;
+
+  const anchor = [...logs].sort((a, b) => b.date.localeCompare(a.date))[0];
+  const base = Number(anchor.balance) || 0;
+
+  const later = ((txByAccount || {})[account.id] || []).filter(t => t.date > anchor.date);
+  const delta = later.reduce((sum, t) => {
+    const amt = Number(t.amount) || 0;
+    return sum + (t.type === "credit" ? amt : -amt);
+  }, 0);
+
+  return base + delta;
 }
 
 export function lastActivityDate(account, txByAccount, balByAccount) {
