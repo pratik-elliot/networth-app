@@ -100,9 +100,9 @@ test("parse refuses an account belonging to someone else", async (t) => {
 
 test("parse returns normalised rows and writes nothing", async (t) => {
   const accounts = [{ _id: ACCOUNT_ID, userId: USER_ID }];
-  const extract = async () => [
+  const extract = async () => ({ transactions: [
     { date: "13/02/2026", description: "SALARY", type: "credit", amount: "50,000" },
-  ];
+  ], closingBalance: null });
   await withServer(t, { accounts, extract }, async (base) => {
     const { body, contentType } = uploadForm("Date,Desc,Amount\n", "s.csv");
     const res = await fetch(`${base}/api/statements/parse/${ACCOUNT_ID}`, {
@@ -122,10 +122,10 @@ test("parse returns normalised rows and writes nothing", async (t) => {
 test("parse flags a row that already exists on the account", async (t) => {
   const accounts = [{ _id: ACCOUNT_ID, userId: USER_ID }];
   const transactions = [{ date: "2026-02-13", amount: 50000, description: "SALARY" }];
-  const extract = async () => [
+  const extract = async () => ({ transactions: [
     { date: "2026-02-13", description: "SALARY", type: "credit", amount: "50000" },
     { date: "2026-02-14", description: "RENT", type: "debit", amount: "1000" },
-  ];
+  ], closingBalance: null });
   await withServer(t, { accounts, transactions, extract }, async (base) => {
     const { body, contentType } = uploadForm("x", "s.csv");
     const res = await fetch(`${base}/api/statements/parse/${ACCOUNT_ID}`, {
@@ -140,7 +140,7 @@ test("parse flags a row that already exists on the account", async (t) => {
 
 test("parse surfaces rows the normaliser could not use", async (t) => {
   const accounts = [{ _id: ACCOUNT_ID, userId: USER_ID }];
-  const extract = async () => [{ date: "nonsense", description: "X", amount: "1", type: "credit" }];
+  const extract = async () => ({ transactions: [{ date: "nonsense", description: "X", amount: "1", type: "credit" }], closingBalance: null });
   await withServer(t, { accounts, extract }, async (base) => {
     const { body, contentType } = uploadForm("x", "s.csv");
     const res = await fetch(`${base}/api/statements/parse/${ACCOUNT_ID}`, {
@@ -329,5 +329,54 @@ test("parse NEVER echoes the password back or logs it", async (t) => {
     const raw = await res.text();
     assert.ok(!raw.includes(secret), "password came back in the response body");
     assert.ok(!logged.join("\n").includes(secret), "password was written to the console");
+  });
+});
+
+test("parse returns a normalised closing balance", async (t) => {
+  const accounts = [{ _id: ACCOUNT_ID, userId: USER_ID }];
+  const extract = async () => ({
+    transactions: [{ date: "31/07/2026", description: "SALARY", type: "credit", amount: "50000" }],
+    closingBalance: { date: "31/07/2026", amount: "1,23,456.00" },
+  });
+  await withServer(t, { accounts, extract }, async (base) => {
+    const { body, contentType } = uploadForm("x", "s.csv");
+    const res = await fetch(`${base}/api/statements/parse/${ACCOUNT_ID}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tokenFor(USER_ID)}`, "Content-Type": contentType },
+      body,
+    });
+    const json = await res.json();
+    assert.deepStrictEqual(json.closingBalance, { date: "2026-07-31", amount: 123456 });
+  });
+});
+
+test("parse returns closingBalance null when the extractor found none", async (t) => {
+  const accounts = [{ _id: ACCOUNT_ID, userId: USER_ID }];
+  const extract = async () => ({ transactions: [], closingBalance: null });
+  await withServer(t, { accounts, extract }, async (base) => {
+    const { body, contentType } = uploadForm("x", "s.csv");
+    const res = await fetch(`${base}/api/statements/parse/${ACCOUNT_ID}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tokenFor(USER_ID)}`, "Content-Type": contentType },
+      body,
+    });
+    assert.strictEqual((await res.json()).closingBalance, null);
+  });
+});
+
+test("parse drops an unparseable closing balance rather than guessing", async (t) => {
+  const accounts = [{ _id: ACCOUNT_ID, userId: USER_ID }];
+  const extract = async () => ({
+    transactions: [],
+    closingBalance: { date: "not a date", amount: "abc" },
+  });
+  await withServer(t, { accounts, extract }, async (base) => {
+    const { body, contentType } = uploadForm("x", "s.csv");
+    const res = await fetch(`${base}/api/statements/parse/${ACCOUNT_ID}`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${tokenFor(USER_ID)}`, "Content-Type": contentType },
+      body,
+    });
+    assert.strictEqual((await res.json()).closingBalance, null);
   });
 });

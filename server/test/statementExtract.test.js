@@ -72,13 +72,13 @@ test("extractTransactions returns the rows the model reported", async () => {
   process.env.OPENROUTER_API_KEY = "test-key";
   const rows = [{ date: "2026-02-13", description: "Salary", type: "credit", amount: "50000" }];
   const fetchImpl = stubFetch(modelSaid({ transactions: rows }));
-  assert.deepStrictEqual(await loadFresh().extractTransactions("text", { fetchImpl }), rows);
+  assert.deepStrictEqual((await loadFresh().extractTransactions("text", { fetchImpl })).transactions, rows);
 });
 
 test("extractTransactions returns an empty array when the model finds nothing", async () => {
   process.env.OPENROUTER_API_KEY = "test-key";
   const fetchImpl = stubFetch(modelSaid({ transactions: [] }));
-  assert.deepStrictEqual(await loadFresh().extractTransactions("text", { fetchImpl }), []);
+  assert.deepStrictEqual((await loadFresh().extractTransactions("text", { fetchImpl })).transactions, []);
 });
 
 test("extractTransactions explains a missing ZDR provider", async () => {
@@ -113,7 +113,7 @@ test("extractTransactions tolerates a model that wraps JSON in code fences", asy
   const fenced = "```json\n{\"transactions\":[{\"date\":\"2026-02-13\",\"amount\":\"5\"}]}\n```";
   const fetchImpl = stubFetch({ choices: [{ message: { content: fenced } }] });
   const out = await loadFresh().extractTransactions("text", { fetchImpl });
-  assert.strictEqual(out.length, 1);
+  assert.strictEqual(out.transactions.length, 1);
 });
 
 test("extractTransactions does not send response_format", async () => {
@@ -156,4 +156,35 @@ test("extractTransactions falls back to the outer message when there is no neste
 test("extractTransactions refuses to run without an API key", async () => {
   delete process.env.OPENROUTER_API_KEY;
   await assert.rejects(() => loadFresh().extractTransactions("text", {}), /not configured/i);
+});
+
+test("extractTransactions returns transactions and a closing balance", async () => {
+  process.env.OPENROUTER_API_KEY = "test-key";
+  const payload = modelSaid({
+    transactions: [{ date: "2026-07-31", description: "SALARY", type: "credit", amount: "50000" }],
+    closingBalance: { date: "2026-07-31", amount: "1,23,456.00" },
+  });
+  const fetchImpl = stubFetch(payload);
+  const out = await loadFresh().extractTransactions("text", { fetchImpl });
+  assert.strictEqual(out.transactions.length, 1);
+  assert.deepStrictEqual(out.closingBalance, { date: "2026-07-31", amount: "1,23,456.00" });
+});
+
+test("extractTransactions returns a null closing balance when the model omits it", async () => {
+  process.env.OPENROUTER_API_KEY = "test-key";
+  const fetchImpl = stubFetch(modelSaid({ transactions: [] }));
+  const out = await loadFresh().extractTransactions("text", { fetchImpl });
+  assert.deepStrictEqual(out.transactions, []);
+  assert.strictEqual(out.closingBalance, null);
+});
+
+test("extractTransactions still asks for the closing balance in the prompt", async () => {
+  process.env.OPENROUTER_API_KEY = "test-key";
+  const fetchImpl = stubFetch(modelSaid({ transactions: [] }));
+  await loadFresh().extractTransactions("text", { fetchImpl });
+  const body = JSON.parse(fetchImpl.calls[0].init.body);
+  const system = body.messages[0].content;
+  assert.match(system, /closingBalance/);
+  // Balance rows must still be kept OUT of the transaction list.
+  assert.match(system, /Ignore .*balance/i);
 });

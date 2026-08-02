@@ -6,6 +6,7 @@ const { importLimiter } = require("../middleware/rateLimit");
 const statementText = require("../services/statementText");
 const statementExtract = require("../services/statementExtract");
 const { normalise } = require("../services/normaliseTransactions");
+const { normaliseDate, normaliseAmount } = require("../services/normaliseFields");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -54,14 +55,24 @@ async function handleParse(req, res, uploadErr) {
     return res.status(400).json(body);
   }
 
-  let rawRows;
+  let extracted;
   try {
-    rawRows = await statementExtract.extractTransactions(text);
+    extracted = await statementExtract.extractTransactions(text);
   } catch (e) {
     return res.status(502).json({ error: e.message });
   }
 
-  const { rows, rejected, dateOrderAssumed } = normalise(rawRows);
+  const { rows, rejected, dateOrderAssumed } = normalise(extracted.transactions);
+
+  // The closing balance is the anchor the balance model needs. Parsed with the
+  // same helpers as the transactions, and dropped entirely if either half is
+  // unreadable -- a guessed balance is worse than no balance.
+  let closingBalance = null;
+  if (extracted.closingBalance) {
+    const d = normaliseDate(extracted.closingBalance.date, { order: dateOrderAssumed || "DD/MM" });
+    const a = normaliseAmount(extracted.closingBalance.amount);
+    if (d && a) closingBalance = { date: d.iso, amount: a.negative ? -a.value : a.value };
+  }
 
   const { transactions } = collections();
   const existing = new Set(
@@ -73,6 +84,7 @@ async function handleParse(req, res, uploadErr) {
     rows: rows.map(r => ({ ...r, duplicate: existing.has(duplicateKey(r.date, r.amount, r.description)) })),
     rejected,
     dateOrderAssumed,
+    closingBalance,
   });
 }
 

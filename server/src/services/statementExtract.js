@@ -6,10 +6,11 @@ const MAX_TEXT_CHARS = 120000;
 
 const SYSTEM_PROMPT = [
   "You extract bank transactions from statement text.",
-  'Return ONLY a JSON object of the form {"transactions":[{"date":"...","description":"...","type":"credit|debit","amount":"..."}]}.',
+  'Return ONLY a JSON object of the form {"transactions":[{"date":"...","description":"...","type":"credit|debit","amount":"..."}],"closingBalance":{"date":"...","amount":"..."}}.',
   "Copy dates and amounts EXACTLY as they appear in the statement; never reformat, convert or recalculate them.",
   "Use 'credit' for money coming in and 'debit' for money going out.",
-  "Ignore opening and closing balance lines, running balance columns, page headers and footers, and summary totals.",
+  "Ignore opening and closing balance lines, running balance columns, page headers and footers, and summary totals when building the transactions array.",
+  "Separately, if the statement states a closing or ending balance, report it as closingBalance with the date it applies to. If there is no clear closing balance, set closingBalance to null.",
   "Ignore page markers of the form '-- 1 of 3 --'.",
   "If there are no transactions, return an empty array.",
 ].join(" ");
@@ -132,7 +133,12 @@ async function extractTransactions(text, opts = {}) {
     throw new Error("Could not read this statement — the extraction service returned an unexpected response.");
   }
 
-  return Array.isArray(parsed && parsed.transactions) ? parsed.transactions : [];
+  const transactions = Array.isArray(parsed && parsed.transactions) ? parsed.transactions : [];
+  const cb = parsed && parsed.closingBalance;
+  // Kept raw here; normalising happens in the route alongside the transactions
+  // so both go through the same date/amount parsing.
+  const closingBalance = cb && (cb.date || cb.amount) ? cb : null;
+  return { transactions, closingBalance };
 }
 
 module.exports = { extractTransactions, isConfigured };
