@@ -10,25 +10,34 @@ export default function Dashboard({ accounts, txByAccount, balByAccount, fxRate 
   const byCurrency = useMemo(() => {
     const res = { USD: { total: 0, liquid: 0, nonLiquid: 0 }, INR: { total: 0, liquid: 0, nonLiquid: 0 } };
     accounts.forEach(a => {
-      const val = latestValue(a, balByAccount);
+      const val = latestValue(a, balByAccount, txByAccount);
+      // An account with no balance anchor is unknown, not empty. Adding 0 would
+      // quietly understate net worth and look like a confident answer.
+      if (val === null) return;
       const liquid = a.isLiquid === null || a.isLiquid === undefined ? typeInfo(a.type).liquid : a.isLiquid;
       res[a.currency].total += val;
       if (liquid) res[a.currency].liquid += val; else res[a.currency].nonLiquid += val;
     });
     return res;
-  }, [accounts, balByAccount]);
+  }, [accounts, balByAccount, txByAccount]);
+
+  const unvaluedCount = useMemo(
+    () => accounts.filter(a => latestValue(a, balByAccount, txByAccount) === null).length,
+    [accounts, balByAccount, txByAccount]
+  );
 
   const combinedUSD = byCurrency.USD.total + byCurrency.INR.total / (fxRate || 83);
 
   const byType = useMemo(() => {
     const map = {};
     accounts.forEach(a => {
-      const val = latestValue(a, balByAccount);
+      const val = latestValue(a, balByAccount, txByAccount);
+      if (val === null) return;
       const valUSD = a.currency === "INR" ? val / (fxRate || 83) : val;
       map[a.type] = (map[a.type] || 0) + valUSD;
     });
     return Object.entries(map).map(([type, value]) => ({ name: typeInfo(type).label, value: Math.round(value) }));
-  }, [accounts, balByAccount, fxRate]);
+  }, [accounts, balByAccount, txByAccount, fxRate]);
 
   const barData = [
     { name: "USD accounts", Liquid: byCurrency.USD.liquid, "Non-liquid": byCurrency.USD.nonLiquid },
@@ -45,6 +54,11 @@ export default function Dashboard({ accounts, txByAccount, balByAccount, fxRate 
           <div style={{ color: C.ivoryDim, fontSize: 12, textTransform: "uppercase", letterSpacing: "0.06em" }}>Combined Net Worth (est., ~USD)</div>
           <div style={{ fontFamily: SERIF, fontSize: 32, color: C.gold, marginTop: 4 }}>{fmt(combinedUSD, "USD")}</div>
           <div style={{ color: C.ivoryDim, fontSize: 11, marginTop: 4 }}>Using FX rate 1 USD = {fxRate} INR (set in Settings)</div>
+          {unvaluedCount > 0 && (
+            <div style={{ color: C.amber, fontSize: 12, marginTop: 6 }}>
+              {unvaluedCount} account{unvaluedCount === 1 ? "" : "s"} excluded — no balance logged yet.
+            </div>
+          )}
         </div>
         {CURRENCIES.map(cur => (
           <div key={cur} style={{ background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 10, padding: 18 }}>

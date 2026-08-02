@@ -35,7 +35,7 @@ export default function AccountsList({ accounts, txByAccount, balByAccount, onEd
         {filtered.map(a => {
           const info = typeInfo(a.type);
           const Icon = info.icon;
-          const val = latestValue(a, balByAccount);
+          const val = latestValue(a, balByAccount, txByAccount);
           const stale = isStale(a, txByAccount, balByAccount);
           return (
             <div key={a.id} onClick={() => onOpen(a.id)} style={{ background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 10, padding: 14, cursor: "pointer" }} className="flex items-center justify-between hover:brightness-110">
@@ -48,7 +48,9 @@ export default function AccountsList({ accounts, txByAccount, balByAccount, onEd
               </div>
               <div className="flex items-center gap-3">
                 {stale && <StaleBadge />}
-                <div style={{ color: C.ivory, fontFamily: MONO, fontSize: 16, textAlign: "right" }}>{fmt(val, a.currency)}</div>
+                <div style={{ color: val === null ? C.ivoryDim : C.ivory, fontFamily: MONO, fontSize: 16, textAlign: "right" }}>
+                  {val === null ? "Not set" : fmt(val, a.currency)}
+                </div>
                 <button onClick={e => { e.stopPropagation(); onEdit(a); }} style={{ color: C.ivoryDim }}><Pencil size={15} /></button>
                 <button onClick={e => { e.stopPropagation(); if (confirm(`Delete ${a.name}?`)) onDelete(a.id); }} style={{ color: C.crimson }}><Trash2 size={15} /></button>
               </div>

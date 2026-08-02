@@ -7,7 +7,10 @@ import { api } from "../api";
 export default function Reports({ accounts, txByAccount, balByAccount }) {
   const byType = {};
   accounts.forEach(a => {
-    const val = latestValue(a, balByAccount);
+    const val = latestValue(a, balByAccount, txByAccount);
+    // No balance anchor means the value is unknown, not zero — leave it out
+    // rather than understating the summary.
+    if (val === null) return;
     if (!byType[a.type]) byType[a.type] = { USD: 0, INR: 0 };
     byType[a.type][a.currency] += val;
   });

@@ -14,7 +14,7 @@ export default function AccountDetail({
   const isPhysical = PHYSICAL_TYPES.includes(account.type);
   const txns = (txByAccount[account.id] || []).slice().sort((a, b) => b.date.localeCompare(a.date));
   const logs = (balByAccount[account.id] || []).slice().sort((a, b) => b.date.localeCompare(a.date));
-  const val = latestValue(account, balByAccount);
+  const val = latestValue(account, balByAccount, txByAccount);
   const fileRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
