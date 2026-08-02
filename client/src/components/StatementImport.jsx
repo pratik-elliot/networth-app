@@ -130,9 +130,11 @@ export default function StatementImport({ accountId, onImported }) {
   const selected = result ? result.rows.filter(r => r.include).length : 0;
 
   return (
-    <div className="mt-4" style={{ borderTop: `1px solid ${C.hair}`, paddingTop: 10 }}>
-      <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-        <div style={{ color: C.ivoryDim, fontSize: 12 }}>Import statement (PDF, CSV or Excel)</div>
+    // The enclosing card supplies the heading and the explanation, so this
+    // renders only the control -- a second "Import statement" title here would
+    // just repeat it.
+    <div>
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
         <label style={{ color: C.gold, fontSize: 12, cursor: "pointer" }} className="inline-flex items-center gap-1">
           <FileUp size={13} />{busy ? (stage || "Working…") : "Choose file"}
           <input

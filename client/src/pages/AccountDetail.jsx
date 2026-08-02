@@ -1,10 +1,24 @@
 import React, { useRef, useState } from "react";
-import { ArrowLeft, Pencil, Plus, RefreshCw, Download, Users, Upload, Trash2 } from "lucide-react";
-import { C, SERIF, MONO, typeInfo, fmt, latestValue, isStale, lastActivityDate, PHYSICAL_TYPES } from "../theme";
+import { ArrowLeft, Pencil, Plus, RefreshCw, Download, Users, Upload } from "lucide-react";
+import { C, SERIF, MONO, typeInfo, fmt, latestValue, isStale, PHYSICAL_TYPES } from "../theme";
 import { Btn, StaleBadge, EmptyNote } from "../components/ui";
 import { api } from "../api";
 import Attachment from "../components/Attachment";
 import StatementImport from "../components/StatementImport";
+
+// One card, one job. Previously a single card carried identity, nominees,
+// file storage, statement import and an action row whose every button operated
+// on a different card's contents.
+const CARD = {
+  background: C.panel,
+  border: `1px solid ${C.hair}`,
+  borderRadius: 10,
+  padding: 16,
+  marginBottom: 16,
+};
+
+const CARD_TITLE = { color: C.ivory, fontFamily: SERIF, fontSize: 15, marginBottom: 8 };
+const CARD_SUB = { color: C.ivoryDim, fontSize: 11.5, marginBottom: 10, lineHeight: 1.4 };
 
 export default function AccountDetail({
   account, txByAccount, balByAccount, onBack, onAddTxn, onAddBalance, onUpdateValue, onEdit,
@@ -15,6 +29,8 @@ export default function AccountDetail({
   const txns = (txByAccount[account.id] || []).slice().sort((a, b) => b.date.localeCompare(a.date));
   const logs = (balByAccount[account.id] || []).slice().sort((a, b) => b.date.localeCompare(a.date));
   const val = latestValue(account, balByAccount, txByAccount);
+  // logs is sorted newest-first, so logs[0] is the anchor.
+  const laterTxnCount = logs.length ? txns.filter(t => t.date > logs[0].date).length : 0;
   const fileRef = useRef(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
@@ -63,16 +79,16 @@ export default function AccountDetail({
     <div>
       <button onClick={onBack} className="flex items-center gap-1 mb-4" style={{ color: C.gold, fontSize: 13 }}><ArrowLeft size={14} />Back to accounts</button>
 
-      <div style={{ background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 10, padding: 20, marginBottom: 16 }}>
-        <div className="flex justify-between items-start">
+      {/* 1. IDENTITY */}
+      <div style={CARD}>
+        <div className="flex justify-between items-start gap-3 flex-wrap">
           <div>
-            <div style={{ color: C.ivoryDim, fontSize: 12 }}>{info.label} · {account.institution} · {account.country}</div>
+            <div style={{ color: C.ivoryDim, fontSize: 12 }}>
+              {[info.label, account.institution, account.country].filter(Boolean).join(" · ")}
+            </div>
             <div style={{ fontFamily: SERIF, fontSize: 24, color: C.ivory }}>{account.name}</div>
           </div>
-          <div className="text-right">
-            <div style={{ fontFamily: MONO, fontSize: 28, color: C.gold }}>{fmt(val, account.currency)}</div>
-            {isStale(account, txByAccount, balByAccount) && <div className="mt-1"><StaleBadge /></div>}
-          </div>
+          <Btn variant="ghost" onClick={onEdit}><Pencil size={13} />Edit account</Btn>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4" style={{ fontSize: 12.5, color: C.ivoryDim }}>
@@ -91,90 +107,130 @@ export default function AccountDetail({
               <div>Vehicle: <b style={{ color: C.ivory }}>{account.year} {account.make} {account.model}</b></div>
             </>
           )}
-          {isPhysical && account.valueDate && (
-            <div>Priced as of <b style={{ color: C.ivory }}>{account.valueDate}</b>{account.valueUrl && <> · <a href={account.valueUrl} target="_blank" rel="noreferrer" style={{ color: C.teal }}>source</a></>}</div>
-          )}
         </div>
 
         {account.nominees?.length > 0 && (
-          <div className="mt-4" style={{ borderTop: `1px solid ${C.hair}`, paddingTop: 10 }}>
+          <div className="mt-3">
             <div style={{ color: C.ivoryDim, fontSize: 12, marginBottom: 4 }}><Users size={12} className="inline mr-1" />Nominees</div>
             <div className="flex gap-2 flex-wrap">
-              {account.nominees.map(n => <span key={n.id} style={{ fontSize: 12.5, color: C.ivory, background: C.panelHi, padding: "4px 10px", borderRadius: 20 }}>{n.name} ({n.relation}{n.percent ? `, ${n.percent}%` : ""})</span>)}
+              {account.nominees.map(n => (
+                <span key={n.id} style={{ fontSize: 12.5, color: C.ivory, background: C.panelHi, padding: "4px 10px", borderRadius: 20 }}>
+                  {n.name} ({n.relation}{n.percent ? `, ${n.percent}%` : ""})
+                </span>
+              ))}
             </div>
           </div>
         )}
-
-        <div className="mt-4" style={{ borderTop: `1px solid ${C.hair}`, paddingTop: 10 }}>
-          <div className="flex items-center justify-between mb-2">
-            <div style={{ color: C.ivoryDim, fontSize: 12 }}>Files (statements, valuations, certificates, photos)</div>
-            <label style={{ color: C.gold, fontSize: 12, cursor: "pointer" }} className="inline-flex items-center gap-1">
-              <Upload size={13} />{uploading ? "Uploading…" : "Upload"}
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*,.pdf,.csv,.xls,.xlsx,.doc,.docx,.txt"
-                multiple
-                onChange={handleUpload}
-                style={{ display: "none" }}
-              />
-            </label>
-          </div>
-          {uploadError && (
-            <div style={{ color: C.crimson, fontSize: 12, marginBottom: 8 }}>{uploadError}</div>
-          )}
-          <div className="flex gap-2 flex-wrap">
-            {(account.images || []).map(att => (
-              <Attachment key={att.id} att={att} onRemove={removeFile} />
-            ))}
-            {(!account.images || account.images.length === 0) && <div style={{ color: C.ivoryDim, fontSize: 12 }}>No files yet.</div>}
-          </div>
-        </div>
-
-        {!isPhysical && (
-          <StatementImport accountId={account.id} onImported={onImagesChanged} />
-        )}
-
-        <div className="flex gap-2 mt-4 flex-wrap">
-          <Btn variant="ghost" onClick={onEdit}><Pencil size={13} />Edit account</Btn>
-          {isPhysical ? <Btn onClick={onUpdateValue}><RefreshCw size={13} />Update Value</Btn> : (
-            <>
-              <Btn onClick={onAddTxn}><Plus size={13} />Log Transaction</Btn>
-              <Btn onClick={onAddBalance}><Plus size={13} />Log Balance</Btn>
-            </>
-          )}
-          <Btn variant="ghost" onClick={exportCsv}><Download size={13} />Download History (CSV)</Btn>
-        </div>
       </div>
 
-      {!isPhysical && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div style={{ background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 10, padding: 16 }}>
-            <div style={{ color: C.ivory, fontFamily: SERIF, fontSize: 15, marginBottom: 8 }}>Transaction History ({txns.length})</div>
-            <div style={{ maxHeight: 380, overflowY: "auto" }}>
-              {txns.map(t => (
-                <div key={t.id} className="flex justify-between py-1.5" style={{ borderBottom: `1px solid ${C.hair}`, fontSize: 13 }}>
-                  <div><span style={{ color: C.ivoryDim }}>{t.date}</span> <span style={{ color: C.ivory }}>{t.description}</span></div>
-                  <div style={{ color: t.type === "credit" ? C.teal : C.crimson, fontFamily: MONO }}>{t.type === "credit" ? "+" : "-"}{fmt(t.amount, account.currency)}</div>
+      {/* 2. BALANCE (or VALUATION for physical assets) */}
+      <div style={CARD}>
+        <div className="flex justify-between items-start gap-3 flex-wrap">
+          <div>
+            <div style={CARD_TITLE}>{isPhysical ? "Valuation" : "Balance"}</div>
+            <div style={{ fontFamily: MONO, fontSize: 28, color: val === null ? C.ivoryDim : C.gold }}>
+              {val === null ? "Not set" : fmt(val, account.currency)}
+            </div>
+            {isPhysical ? (
+              account.valueDate && (
+                <div style={{ color: C.ivoryDim, fontSize: 11.5, marginTop: 2 }}>
+                  priced {account.valueDate}
+                  {account.valueUrl && <> · <a href={account.valueUrl} target="_blank" rel="noreferrer" style={{ color: C.teal }}>source</a></>}
                 </div>
-              ))}
-              {txns.length === 0 && <EmptyNote text="No transactions logged yet." />}
+              )
+            ) : val === null ? (
+              <div style={{ color: C.amber, fontSize: 11.5, marginTop: 2 }}>
+                No balance logged, so this account is left out of your net worth.
+              </div>
+            ) : (
+              <div style={{ color: C.ivoryDim, fontSize: 11.5, marginTop: 2 }}>
+                anchored {logs[0].date}
+                {laterTxnCount > 0 && ` · ${laterTxnCount} later transaction${laterTxnCount === 1 ? "" : "s"} applied`}
+              </div>
+            )}
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {isPhysical
+              ? <Btn onClick={onUpdateValue}><RefreshCw size={13} />Update Value</Btn>
+              : <Btn onClick={onAddBalance}><Plus size={13} />Log Balance</Btn>}
+          </div>
+        </div>
+
+        {!isPhysical && logs.length > 0 && (
+          <div className="mt-3" style={{ borderTop: `1px solid ${C.hair}`, paddingTop: 8, maxHeight: 140, overflowY: "auto" }}>
+            {logs.map(l => (
+              <div key={l.id} className="flex justify-between py-1" style={{ fontSize: 12.5 }}>
+                <span style={{ color: C.ivoryDim }}>{l.date}</span>
+                <span style={{ color: C.ivory, fontFamily: MONO }}>{fmt(l.balance, account.currency)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {isStale(account, txByAccount, balByAccount) && <div className="mt-2"><StaleBadge /></div>}
+      </div>
+
+      {/* 3. TRANSACTIONS */}
+      {!isPhysical && (
+        <div style={CARD}>
+          <div className="flex justify-between items-center gap-2 flex-wrap" style={{ marginBottom: 8 }}>
+            <div style={{ ...CARD_TITLE, marginBottom: 0 }}>Transactions ({txns.length})</div>
+            <div className="flex gap-2 flex-wrap">
+              <Btn onClick={onAddTxn}><Plus size={13} />Log Transaction</Btn>
+              <Btn variant="ghost" onClick={exportCsv}><Download size={13} />CSV</Btn>
             </div>
           </div>
-          <div style={{ background: C.panel, border: `1px solid ${C.hair}`, borderRadius: 10, padding: 16 }}>
-            <div style={{ color: C.ivory, fontFamily: SERIF, fontSize: 15, marginBottom: 8 }}>Balance History ({logs.length})</div>
-            <div style={{ maxHeight: 380, overflowY: "auto" }}>
-              {logs.map(l => (
-                <div key={l.id} className="flex justify-between py-1.5" style={{ borderBottom: `1px solid ${C.hair}`, fontSize: 13 }}>
-                  <div style={{ color: C.ivoryDim }}>{l.date}</div>
-                  <div style={{ color: C.ivory, fontFamily: MONO }}>{fmt(l.balance, account.currency)}</div>
+          <div style={{ maxHeight: 380, overflowY: "auto" }}>
+            {txns.map(t => (
+              <div key={t.id} className="flex justify-between gap-2 py-1.5" style={{ borderBottom: `1px solid ${C.hair}`, fontSize: 13 }}>
+                <div style={{ minWidth: 0 }}>
+                  <span style={{ color: C.ivoryDim }}>{t.date}</span>{" "}
+                  <span style={{ color: C.ivory }}>{t.description}</span>
                 </div>
-              ))}
-              {logs.length === 0 && <EmptyNote text="No balances logged yet." />}
-            </div>
+                <div style={{ color: t.type === "credit" ? C.teal : C.crimson, fontFamily: MONO, whiteSpace: "nowrap" }}>
+                  {t.type === "credit" ? "+" : "-"}{fmt(t.amount, account.currency)}
+                </div>
+              </div>
+            ))}
+            {txns.length === 0 && <EmptyNote text="No transactions logged yet." />}
           </div>
         </div>
       )}
+
+      {/* 4. IMPORT STATEMENT */}
+      {!isPhysical && (
+        <div style={CARD}>
+          <div style={CARD_TITLE}>Import statement</div>
+          <div style={CARD_SUB}>Reads a PDF, CSV or Excel statement and creates transactions from it.</div>
+          <StatementImport accountId={account.id} onImported={onImagesChanged} />
+        </div>
+      )}
+
+      {/* 5. DOCUMENTS */}
+      <div style={CARD}>
+        <div style={CARD_TITLE}>Documents</div>
+        <div style={CARD_SUB}>Stored for reference — never read. Valuations, KYC papers, locker photos.</div>
+        <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
+          <div style={{ color: C.ivoryDim, fontSize: 12 }}>{(account.images || []).length} file(s)</div>
+          <label style={{ color: C.gold, fontSize: 12, cursor: "pointer" }} className="inline-flex items-center gap-1">
+            <Upload size={13} />{uploading ? "Uploading…" : "Upload"}
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*,.pdf,.csv,.xls,.xlsx,.doc,.docx,.txt"
+              multiple
+              onChange={handleUpload}
+              style={{ display: "none" }}
+            />
+          </label>
+        </div>
+        {uploadError && <div style={{ color: C.crimson, fontSize: 12, marginBottom: 8 }}>{uploadError}</div>}
+        <div className="flex gap-2 flex-wrap">
+          {(account.images || []).map(att => (
+            <Attachment key={att.id} att={att} onRemove={removeFile} />
+          ))}
+          {(!account.images || account.images.length === 0) && <div style={{ color: C.ivoryDim, fontSize: 12 }}>No files yet.</div>}
+        </div>
+      </div>
     </div>
   );
 }
